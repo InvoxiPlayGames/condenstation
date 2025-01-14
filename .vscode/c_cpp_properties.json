@@ -1,0 +1,18 @@
+{
+    "configurations": [
+        {
+            "name": "PS3",
+            "includePath": [
+                "${workspaceFolder}/include",
+                "${PS3SDKTARGET}/ppu/include"
+            ],
+            "defines": [
+                "_DEBUG"
+            ],
+            "compilerPath": "${PS3SDKHOST}/ppu/bin/ppu-lv2-gcc",
+            "cStandard": "c99",
+            "intelliSenseMode": "linux-gcc-x86"
+        }
+    ],
+    "version": 4
+}

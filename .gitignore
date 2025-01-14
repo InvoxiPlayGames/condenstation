@@ -1,0 +1,7 @@
+*.prx
+*.sprx
+*.o
+*.elf
+build_ps3
+out
+data
