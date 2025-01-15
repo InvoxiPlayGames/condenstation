@@ -38,7 +38,7 @@ INCLUDES_P := $(PPUHOSTPATH_P)/lib/gcc/ppu-lv2/$(GCC_VER_P)/include \
 # library directories
 LIBDIR_P := $(PPUPATH_P)/lib 
 # library includes
-LIBS_P := -lstdc++ -lsupc++ -lfs_stub -lnet_stub -lsysutil_stub -lc_stub
+LIBS_P := -lstdc++ -lsupc++ -lfs_stub -lsysmodule_stub -lhttp_stub -lhttp_util_stub -lssl_stub -lnet_stub -lsysutil_stub -lc_stub
 # compiler flags
 CFLAGS_P := -O2 -Wall -Wno-format-extra-args -x c -std=gnu99 \
 			$(patsubst %,-D%,$(DEFINES)) \

@@ -25,8 +25,8 @@ This third-party project is not affiliated with nor endorsed by Valve Software.
 * [ ] Using `GetCMList` API and patching the existing binary's CM list
 * [ ] Stubbing matchmaking (Portal 2 only)
     * Ideally we would figure out making it PS3/demo_viewer only, but that probably isn't possible.
-* [ ] Implementing on-console login
-    * [ ] QR code login
+* [x] Implementing on-console login
+    * [x] QR code login (currently partial - has no UI nor QR rendering, but the code exists)
     * [ ] Per-console encrypted token storage **(THIS IS VERY IMPORTANT)**
 
 ## TODO (nice-to-haves, not required)

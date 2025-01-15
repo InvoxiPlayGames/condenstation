@@ -44,6 +44,10 @@ void SCUtils_Init()
     _sys_printf("steamclient_ps3(1): 0x%08x\n", steamclient_seg[1].addr);
 }
 
+void SCUtils_ReplaceString(const char *source, const char *destination) {
+    // TODO(Emma): implement
+}
+
 sc_protobuf_vtable_t *SCUtils_GetProtobufVtable(const char *protobuf_name)
 {
     char proto_name_buffer[0x40];
