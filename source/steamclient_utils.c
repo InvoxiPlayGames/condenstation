@@ -24,7 +24,6 @@ void SCUtils_Init()
 {
     char filenameBuf[1024];
     sys_prx_segment_info_t segments[32];
-
     sys_prx_module_info_t modInfo = {0};
     modInfo.size = sizeof(modInfo);
     modInfo.filename = filenameBuf;
@@ -32,16 +31,61 @@ void SCUtils_Init()
     modInfo.segments = segments;
     modInfo.segments_num = 32;
 
+    // look up the steamclient module
     sys_prx_id_t prxId = sys_prx_get_module_id_by_name("steamclient_ps3", 0, NULL);
-    
     sys_prx_get_module_info(prxId, 0, &modInfo);
 
+    // keep track of our base addresses
     steamclient_seg[0].addr = (uint32_t)modInfo.segments[0].base;
     steamclient_seg[0].length = (uint32_t)modInfo.segments[0].memsz;
     steamclient_seg[1].addr = (uint32_t)modInfo.segments[1].base;
     steamclient_seg[1].length = (uint32_t)modInfo.segments[1].memsz;
     _sys_printf("steamclient_ps3(0): 0x%08x\n", steamclient_seg[0].addr);
     _sys_printf("steamclient_ps3(1): 0x%08x\n", steamclient_seg[1].addr);
+}
+
+void *SCUtils_LookupNID(uint32_t nid)
+{
+    char filenameBuf[1024];
+    sys_prx_segment_info_t segments[32];
+    sys_prx_module_info_v2_t modInfo = {0};
+    modInfo.size = sizeof(modInfo);
+    modInfo.filename = filenameBuf;
+    modInfo.filename_size = sizeof(filenameBuf);
+    modInfo.segments = segments;
+    modInfo.segments_num = 32;
+
+    // look up the steamclient module
+    sys_prx_id_t prxId = sys_prx_get_module_id_by_name("steamclient_ps3", 0, NULL);
+    int r = sys_prx_get_module_info(prxId, 0, &modInfo);
+    if (r != 0)
+        return 0;
+
+    // check to make sure we actually have a libent struct and that it's valid
+    sys_prx_libent32_t *libent = modInfo.libent_addr;
+    if (libent == NULL)
+        return 0;
+    int num_libents = modInfo.libent_size / sizeof(sys_prx_libent32_t);
+    if (num_libents < 1)
+        return 0;
+    if (libent[0].structsize != sizeof(sys_prx_libent32_t))
+        return 0;
+
+    // scan through the NID tables to see if we have the one we're looking for
+    uint32_t found_nid_add = 0;
+    for (int ent = 0; ent < num_libents; ent++) {
+        int num_nids = libent[ent].nfunc + libent[ent].nvar + libent[ent].ntls;
+
+        uint32_t *nidtable = (uint32_t *)libent[ent].nidtable;
+        uint32_t *addtable = (uint32_t *)libent[ent].addtable;
+
+        for (int i = 0; i < num_nids; i++) {
+            //_sys_printf("NID %08x = %08x\n", nidtable[i], addtable[i]);
+            if (nidtable[i] == nid)
+                found_nid_add = addtable[i];
+        }
+    }
+    return (void *)found_nid_add;
 }
 
 void SCUtils_ReplaceString(const char *source, const char *destination) {
