@@ -19,6 +19,7 @@
 #include "valve_ps3.h"
 #include "SteamAuthentication.h"
 #include "steammessages_auth.steamclient.pb-c.h"
+#include "steamclient_steamps3params.h"
 
 // lv2 printf, regular printf doesn't (..?) work (or needs configuration)
 extern int _sys_printf(char *fmt, ...);
@@ -344,6 +345,8 @@ void test_steamauthentication() {
     }
 }
 
+steamclient_GetSteamPS3Params_t steamclient_GetSteamPS3Params;
+
 void apply_steamclient_patches()
 {
     //sys_ppu_thread_t loginThread;
@@ -351,6 +354,16 @@ void apply_steamclient_patches()
 
     // initialise our SteamClient utility library
     SCUtils_Init();
+
+    // detect the current game by looking at the appid passed into steamclient
+    steamclient_GetSteamPS3Params = SCUtils_LookupNID(NID_steamclient_GetSteamPS3Params);
+    SteamPS3Params_t *params = steamclient_GetSteamPS3Params();
+    if (params->m_nAppId == 620)
+        _sys_printf("portal 2!\n");
+    else if (params->m_nAppId == 710)
+        _sys_printf("csgo!\n");
+    else
+        _sys_printf("Unknown AppID %i!\n", params->m_nAppId);
 
     // load our config file
     parse_config_file("/dev_hdd0/tmp/condenstation.ini");

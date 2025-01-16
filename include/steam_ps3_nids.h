@@ -1,3 +1,6 @@
+#ifndef STEAM_PS3_NIDS_H_
+#define STEAM_PS3_NIDS_H_
+
 // steam_api
 #define NID_SteamAPI_Init 0x725B1EE2
 #define NID_SteamAPI_RegisterCallback 0x921B23D5
@@ -35,5 +38,7 @@
 #define NID_Steam_FreeLastCallback 0x53BABE40
 #define NID_Steam_GetAPICallResult 0x5BED1038
 #define NID_Steam_BGetCallback 0xAEA6C929
-#define NID_steamclient_0xAC6BB824 0xAC6BB824 // unknown
+#define NID_steamclient_0xAC6BB824 0xAC6BB824 // sets ps3 startup parameters
 #define NID_steamclient_0xE2C6386D 0xE2C6386D // gets ps3 startup parameters
+
+#endif // STEAM_PS3_NIDS_H_
