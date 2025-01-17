@@ -55,20 +55,28 @@ toc_stub std_basic_string_constructor_stub;
 toc_stub CodedOutputStream_VarintSize32Fallback_stub;
 toc_stub WireFormatLite_WriteString_stub;
 
+bool use_v2_cmsgclientlogon = false;
 // general function to fix up a CMsgClientLogon message to include our username and correct base fields
 void fix_up_CMsgClientLogon(CMsgClientLogonAutogen *cmsg)
 {
+    CMsgClientLogonAutogenV2 *cmsgv2 = (CMsgClientLogonAutogenV2 *)cmsg;
     _sys_printf("fix_up_CMsgClientLogon %p\n", cmsg);
 
     // set OS type to Windows 11
     cmsg->client_os_type = 20;
 
     // unset the PSN ticket and service ID
-    cmsg->enabled_fields &= ~(0x180000); // unset PSN ticket/service
+    if (use_v2_cmsgclientlogon)
+        cmsgv2->enabled_fields &= ~(0x180000); // unset PSN ticket/service
+    else
+        cmsg->enabled_fields &= ~(0x180000); // unset PSN ticket/service
 
     // required to use persistent refresh tokens
     cmsg->should_remember_password = true; // must be disabled to use non-persistent refresh tokens
-    cmsg->enabled_fields |= 0x80; // set should remember password
+    if (use_v2_cmsgclientlogon)
+        cmsgv2->enabled_fields |= 0x80; // set should remember password
+    else
+        cmsg->enabled_fields |= 0x80; // set should remember password
 
     // if we haven't got one already, set up a username
     if ((cmsg->enabled_fields & 0x10000) == 0) {
@@ -87,7 +95,11 @@ void fix_up_CMsgClientLogon(CMsgClientLogonAutogen *cmsg)
             else
                 cmsg->account_name->data.data_ptr = username_bs.data.data_ptr;
         }
-        cmsg->enabled_fields |= 0x10000;
+        // enable the field to be sent
+        if (use_v2_cmsgclientlogon)
+            cmsgv2->enabled_fields |= 0x10000;
+        else
+            cmsg->enabled_fields |= 0x10000;
     }
 }
 
@@ -112,6 +124,8 @@ int CMsgClientLogon_ByteSize_Hook(void *protobuf)
     int pref_byte_len = 1; // length byte is 1 byte long unless it needs to be a varint
     if (data_len >= 0x80)
         pref_byte_len = CodedOutputStream_VarintSize32Fallback(data_len);
+    _sys_printf("data_len = %i\n", data_len);
+    _sys_printf("pref_byte_len = %i\n", data_len);
     orig_len += (pref_byte_len + data_len + 2);
     _sys_printf("new length: %i\n", orig_len);
 
@@ -197,7 +211,7 @@ static void shitalloc_free(shitalloc_data *data, void *buf) {
 void save_credentials(const char *file_path) {
     char inifile[0x1000];
     int fd = -1;
-    snprintf(inifile, sizeof(inifile), "[Account]\nUsername=%s\nAccessToken=%s\n", SteamUsername, SteamAccessToken);
+    snprintf(inifile, sizeof(inifile), "[Account]\nUsername=%s\nRefreshToken=%s\n", SteamUsername, SteamAccessToken);
     CellFsErrno r = cellFsOpen(file_path, CELL_FS_O_WRONLY, &fd, NULL, 0);
     if (r != CELL_FS_SUCCEEDED)
         return false;
@@ -347,6 +361,8 @@ void test_steamauthentication() {
 
 steamclient_GetSteamPS3Params_t steamclient_GetSteamPS3Params;
 
+SteamPS3ParamsInternal_t fakeInternal;
+
 void apply_steamclient_patches()
 {
     //sys_ppu_thread_t loginThread;
@@ -358,12 +374,13 @@ void apply_steamclient_patches()
     // detect the current game by looking at the appid passed into steamclient
     steamclient_GetSteamPS3Params = SCUtils_LookupNID(NID_steamclient_GetSteamPS3Params);
     SteamPS3Params_t *params = steamclient_GetSteamPS3Params();
-    if (params->m_nAppId == 620)
+    use_v2_cmsgclientlogon = (params->m_unVersion == STEAM_PS3_CSGO_PARAMS_VER);
+    if (params->m_unVersion == STEAM_PS3_PORTAL2_PARAMS_VER)
         _sys_printf("portal 2!\n");
-    else if (params->m_nAppId == 710)
+    else if (params->m_unVersion == STEAM_PS3_CSGO_PARAMS_VER)
         _sys_printf("csgo!\n");
     else
-        _sys_printf("Unknown AppID %i!\n", params->m_nAppId);
+        _sys_printf("what?\n");
 
     // load our config file
     parse_config_file("/dev_hdd0/tmp/condenstation.ini");
@@ -383,19 +400,18 @@ void apply_steamclient_patches()
     PS3_WriteMemory(condenstation_toc, (void *)steamclient_toc, 0x800);
     PS3_SetPluginTOCBase(get_toc_base());
 
-    // URGENT TODO(Emma): dynamically find these function offsets!!! it's easy
-    // offsets are valid for Portal 2 1.04
+
     uint32_t steamclient_base = SCUtils_BaseAddress();
     // can be found by checking for the first bl in CMsgClientLogon::GetTypeName
-    std_basic_string_constructor_stub.func = steamclient_base + 0x3303e4;
+    std_basic_string_constructor_stub.func = SCUtils_GetFirstBranchTargetAfterInstruction(FUNC_PTR(cmsgclientlogon_vt->GetTypeName), 0, 8);
     std_basic_string_constructor_stub.toc = steamclient_toc;
     std_basic_string_constructor = &std_basic_string_constructor_stub;
     // can be found by checking for the first bl in CMsgClientLogon::ByteSize
-    CodedOutputStream_VarintSize32Fallback_stub.func = steamclient_base + 0x20c4ec;
+    CodedOutputStream_VarintSize32Fallback_stub.func = SCUtils_GetFirstBranchTargetAfterInstruction(FUNC_PTR(cmsgclientlogon_vt->ByteSize), 0, 26);
     CodedOutputStream_VarintSize32Fallback_stub.toc = steamclient_toc;
     CodedOutputStream_VarintSize32Fallback = &CodedOutputStream_VarintSize32Fallback_stub;
     // can be found by checking for the bl in CMsgClientLogon::SerializeWithCachedSizes after setting r3 to 6 (client_language)
-    WireFormatLite_WriteString_stub.func = steamclient_base + 0x20e064;
+    WireFormatLite_WriteString_stub.func = SCUtils_GetFirstBranchTargetAfterInstruction(FUNC_PTR(cmsgclientlogon_vt->SerializeWithCachedSizes), LI(3, 6), 104);
     WireFormatLite_WriteString_stub.toc = steamclient_toc;
     WireFormatLite_WriteString = &WireFormatLite_WriteString_stub;
 

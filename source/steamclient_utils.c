@@ -88,46 +88,50 @@ void *SCUtils_LookupNID(uint32_t nid)
     return (void *)found_nid_add;
 }
 
-void SCUtils_ReplaceString(const char *source, const char *destination) {
+void SCUtils_ReplaceString(const char *source, const char *destination)
+{
     // TODO(Emma): implement
 }
 
 sc_protobuf_vtable_t *SCUtils_GetProtobufVtable(const char *protobuf_name)
 {
+    // search for the protobuf name by itself - with a null space before and after - to find the string returned by GetTypeName
+    // the null spaces avoid finding any RTTI names or related classes
     char proto_name_buffer[0x40];
     proto_name_buffer[0] = 0;
     strcpy(proto_name_buffer + 1, protobuf_name);
     proto_name_buffer[1 + strlen(protobuf_name)] = 0;
-
     void *proto_string = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, proto_name_buffer, strlen(protobuf_name) + 2);
     if (proto_string == NULL) {
         _sys_printf("failed to find proto string '%s'\n", protobuf_name);
         return NULL;
     }
     _sys_printf("found proto string at %p + 1\n", proto_string);
-    uint32_t proto_string_addr = (uint32_t)proto_string + 1;
+    uint32_t proto_string_addr = (uint32_t)proto_string + 1; // increment by 1 since we found a null byte before
 
-    uint32_t get_type_name_instrs[3] = {
-        0xF8010080, // std r0, 0x80(r1)
-        0x3C800000 + ((proto_string_addr >> 16) & 0xFFFF) + 1, // lis r4, ?
-        0x30840000 + (proto_string_addr & 0xFFFF), // subic r4, r4, ?
-    };
-    
+    // build the part of the GetTypeName instruction that references this string and scans for it
+    uint32_t get_type_name_instrs[3];
+    get_type_name_instrs[0] = 0xF8010080; // std r0, 0x80(r1)
+    get_type_name_instrs[1] = 0x3C800000 + ((proto_string_addr >> 16) & 0xFFFF); // lis r4, ?
+    get_type_name_instrs[2] = 0x30840000 + (proto_string_addr & 0xFFFF); // addic/subic r4, r4, ?
+    // if the lower halfword of the address is 0x8000 then it's a subic and will be subtracting off the first one
+    if ((proto_string_addr & 0xFFFF) >= 0x8000)
+        get_type_name_instrs[1] += 1;
     void *get_type_name_midfunc = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, get_type_name_instrs, sizeof(get_type_name_instrs));
     if (get_type_name_midfunc == NULL) {
         _sys_printf("failed to find type name midfunc\n");
         return NULL;
     }
-
     uint32_t get_type_name_addr = (uint32_t)get_type_name_midfunc - 8;
 
+    // find the entry of GetTypeName in the steamclient TOC
     uint32_t get_type_name_toc_entry[1] = { get_type_name_addr };
     void *get_type_name_toc = own_memmem((void *)steamclient_seg[1].addr, steamclient_seg[1].length, get_type_name_toc_entry, sizeof(get_type_name_toc_entry));
     if (get_type_name_toc == NULL) {
         _sys_printf("failed to find type name toc entry\n");
         return NULL;
     }
-
+    // ... then find a reference to that TOC entry in the main steamclient text segment to find the vtable
     uint32_t get_type_name_toc_addr = (uint32_t)get_type_name_toc;
     uint32_t protobuf_vtable_addrs[1] = { get_type_name_toc_addr };
     void *protobuf_vtable = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, protobuf_vtable_addrs, sizeof(protobuf_vtable_addrs));
@@ -136,7 +140,50 @@ sc_protobuf_vtable_t *SCUtils_GetProtobufVtable(const char *protobuf_name)
         return NULL;
     }
 
+    // subtract 8 (since GetTypeName is the third entry) and we've got it!
     uint32_t protobuf_vtable_addr = (uint32_t)protobuf_vtable - 8;
-
     return (sc_protobuf_vtable_t *)protobuf_vtable_addr;
+}
+
+uint32_t SCUtils_GetFirstBranchTargetAfterInstruction(uint32_t start_address, uint32_t instruction, int scan_length)
+{
+    uint32_t *func_to_scan = (uint32_t *)start_address;
+    bool waiting_for_instruction = instruction == 0 ? false : true;
+    uint32_t branch_instruction = 0;
+    uint32_t instruction_address = 0;
+
+    // scan through the function to check for the first bl (or a prerequisite instruction, *then* the first bl after that)
+    for (int i = 0; i < scan_length; i++)
+    {
+        uint32_t current_insr = func_to_scan[i];
+        if (waiting_for_instruction) {
+            if (current_insr == instruction) {
+                _sys_printf("hit instruction we were trying to check for\n");
+                waiting_for_instruction = false;
+            }
+        } else {
+            // check if it's a linked branch
+            if ((current_insr >> 26) == 18 && (current_insr & 0x48000001) == 0x48000001) {
+                _sys_printf("hit blr %08x\n", current_insr);
+                branch_instruction = current_insr;
+                instruction_address = (uint32_t)(func_to_scan + i);
+                break;
+            }
+        }
+    }
+
+    // nope out if we don't have an instruction
+    if (branch_instruction == 0)
+    {
+        _sys_printf("failed to find branch instruction (e%i)\n", waiting_for_instruction);
+        return 0;
+    }
+
+    // decode the branch instruction by getting the 24 bits necessary
+    int branch_offset = (branch_instruction & 0x3FFFFFC);
+    // check signedness
+    if ((branch_offset & 0x2000000) == 0x2000000)
+        branch_offset -= 0x4000000;
+    
+    return instruction_address + branch_offset;
 }

@@ -21,7 +21,7 @@ This third-party project is not affiliated with nor endorsed by Valve Software.
 * [ ] Connecting to Steam without any external tools or PRX patches
 * [x] Reading account details from a config file
     * [ ] Game-specific config file using the paths given to SteamAPI
-* [ ] Make binary version independent - no hardcoding addresses!
+* [x] Make binary version independent - no hardcoding addresses!
 * [ ] Using `GetCMList` API and patching the existing binary's CM list
 * [ ] Stubbing matchmaking (Portal 2 only)
     * Ideally we would figure out making it PS3/demo_viewer only, but that probably isn't possible.
