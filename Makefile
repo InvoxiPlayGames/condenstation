@@ -73,10 +73,10 @@ clean:
 # PS3 compilation, creates .SPRX file
 
 .PHONY: ps3 ps3_f
-ps3_f: $(OUTPUT)/$(OUTNAME)_f.sprx
+ps3_f: $(OUTPUT)/f_$(OUTNAME).sprx
 ps3: $(OUTPUT)/$(OUTNAME).sprx
 
-$(OUTPUT)/$(OUTNAME)_f.sprx: $(BUILD_P)/output.prx
+$(OUTPUT)/f_$(OUTNAME).sprx: $(BUILD_P)/output.prx
 	@echo "Creating FSPRX..."
 	@mkdir -p $(@D)
 	@$(MAKESELF_P) $^ $@

@@ -21,6 +21,14 @@
 #include "steammessages_auth.steamclient.pb-c.h"
 #include "steamclient_steamps3params.h"
 
+#define TOC_SETTER_STUB(x)                \
+    void SetTOCFor_##x()                    \
+    {                                     \
+        asm("lis 2, toc_register@h;");    \
+        asm("ori 2, 2, toc_register@l;"); \
+        asm("b ." #x ";");           \
+    }
+
 // lv2 printf, regular printf doesn't (..?) work (or needs configuration)
 extern int _sys_printf(char *fmt, ...);
 extern int _sys_sprintf(char *buf, char *fmt, ...);
@@ -46,14 +54,14 @@ char SteamAccessToken[0x400];
 
 std_basic_string username_bs;
 
-// function pointers that we need to call from within our hooks
-CodedOutputStream_VarintSize32Fallback_t CodedOutputStream_VarintSize32Fallback;
-WireFormatLite_WriteString_t WireFormatLite_WriteString;
-std_basic_string_constructor_t std_basic_string_constructor;
 // we need "toc stub"s for these functions because we are setting by address rather than setting from other function pointers
-toc_stub std_basic_string_constructor_stub;
 toc_stub CodedOutputStream_VarintSize32Fallback_stub;
 toc_stub WireFormatLite_WriteString_stub;
+toc_stub std_basic_string_constructor_stub;
+// function pointers that we need to call from within our hooks
+CodedOutputStream_VarintSize32Fallback_t CodedOutputStream_VarintSize32Fallback = &CodedOutputStream_VarintSize32Fallback_stub;
+WireFormatLite_WriteString_t WireFormatLite_WriteString = &WireFormatLite_WriteString_stub;
+std_basic_string_constructor_t std_basic_string_constructor = &std_basic_string_constructor_stub;
 
 bool use_v2_cmsgclientlogon = false;
 // general function to fix up a CMsgClientLogon message to include our username and correct base fields
@@ -103,6 +111,7 @@ void fix_up_CMsgClientLogon(CMsgClientLogonAutogen *cmsg)
     }
 }
 
+TOC_SETTER_STUB(CMsgClientLogon_ByteSize_Hook)
 ProtobufByteSize_t CMsgClientLogon_ByteSize;
 // hook when the client gets the size of the CMsgClientLogon protobuf
 // we have to add the size of our access token
@@ -134,6 +143,7 @@ int CMsgClientLogon_ByteSize_Hook(void *protobuf)
     return orig_len;
 }
 
+TOC_SETTER_STUB(CMsgClientLogon_SerializeWithCachedSizes_Hook)
 ProtobufSerializeWithCachedSizes_t CMsgClientLogon_SerializeWithCachedSizes;
 // hook when the client tries to serialize CMsgClientLogon
 // we have to add our access token
@@ -361,8 +371,6 @@ void test_steamauthentication() {
 
 steamclient_GetSteamPS3Params_t steamclient_GetSteamPS3Params;
 
-SteamPS3ParamsInternal_t fakeInternal;
-
 void apply_steamclient_patches()
 {
     //sys_ppu_thread_t loginThread;
@@ -373,14 +381,16 @@ void apply_steamclient_patches()
 
     // detect the current game by looking at the appid passed into steamclient
     steamclient_GetSteamPS3Params = SCUtils_LookupNID(NID_steamclient_GetSteamPS3Params);
-    SteamPS3Params_t *params = steamclient_GetSteamPS3Params();
-    use_v2_cmsgclientlogon = (params->m_unVersion == STEAM_PS3_CSGO_PARAMS_VER);
-    if (params->m_unVersion == STEAM_PS3_PORTAL2_PARAMS_VER)
-        _sys_printf("portal 2!\n");
-    else if (params->m_unVersion == STEAM_PS3_CSGO_PARAMS_VER)
-        _sys_printf("csgo!\n");
-    else
-        _sys_printf("what?\n");
+    if (steamclient_GetSteamPS3Params != NULL) {
+        SteamPS3Params_t *params = steamclient_GetSteamPS3Params();
+        use_v2_cmsgclientlogon = (params->m_unVersion == STEAM_PS3_CSGO_PARAMS_VER);
+        if (params->m_unVersion == STEAM_PS3_PORTAL2_PARAMS_VER)
+            _sys_printf("portal 2!\n");
+        else if (params->m_unVersion == STEAM_PS3_CSGO_PARAMS_VER)
+            _sys_printf("csgo!\n");
+        else
+            _sys_printf("what?\n");
+    }
 
     // load our config file
     parse_config_file("/dev_hdd0/tmp/condenstation.ini");
@@ -400,34 +410,24 @@ void apply_steamclient_patches()
     PS3_WriteMemory(condenstation_toc, (void *)steamclient_toc, 0x800);
     PS3_SetPluginTOCBase(get_toc_base());
 
-
-    uint32_t steamclient_base = SCUtils_BaseAddress();
+    // find useful protobuf functions that we need
     // can be found by checking for the first bl in CMsgClientLogon::GetTypeName
     std_basic_string_constructor_stub.func = SCUtils_GetFirstBranchTargetAfterInstruction(FUNC_PTR(cmsgclientlogon_vt->GetTypeName), 0, 8);
     std_basic_string_constructor_stub.toc = steamclient_toc;
-    std_basic_string_constructor = &std_basic_string_constructor_stub;
     // can be found by checking for the first bl in CMsgClientLogon::ByteSize
     CodedOutputStream_VarintSize32Fallback_stub.func = SCUtils_GetFirstBranchTargetAfterInstruction(FUNC_PTR(cmsgclientlogon_vt->ByteSize), 0, 26);
     CodedOutputStream_VarintSize32Fallback_stub.toc = steamclient_toc;
-    CodedOutputStream_VarintSize32Fallback = &CodedOutputStream_VarintSize32Fallback_stub;
     // can be found by checking for the bl in CMsgClientLogon::SerializeWithCachedSizes after setting r3 to 6 (client_language)
     WireFormatLite_WriteString_stub.func = SCUtils_GetFirstBranchTargetAfterInstruction(FUNC_PTR(cmsgclientlogon_vt->SerializeWithCachedSizes), LI(3, 6), 104);
     WireFormatLite_WriteString_stub.toc = steamclient_toc;
-    WireFormatLite_WriteString = &WireFormatLite_WriteString_stub;
 
     // keep track of our original function ptr from the vtable
     CMsgClientLogon_SerializeWithCachedSizes = cmsgclientlogon_vt->SerializeWithCachedSizes;
     CMsgClientLogon_ByteSize = cmsgclientlogon_vt->ByteSize;
 
-    // create an r2-fixing jump to our hook function, then overwrite the vtable
-    uint32_t jump_tramp_1 = PS3_CreateTrampoline(FUNC_PTR(CMsgClientLogon_SerializeWithCachedSizes_Hook));
-    PS3_Write32((uint32_t)CMsgClientLogon_SerializeWithCachedSizes_Hook, jump_tramp_1);
-    PS3_Write32(&(cmsgclientlogon_vt->SerializeWithCachedSizes), (uint32_t)CMsgClientLogon_SerializeWithCachedSizes_Hook);
-
-    // create an r2-fixing jump to our hook function, then overwrite the vtable
-    uint32_t jump_tramp_2 = PS3_CreateTrampoline(FUNC_PTR(CMsgClientLogon_ByteSize_Hook));
-    PS3_Write32((uint32_t)CMsgClientLogon_ByteSize_Hook, jump_tramp_2);
-    PS3_Write32(&(cmsgclientlogon_vt->ByteSize), (uint32_t)CMsgClientLogon_ByteSize_Hook);
+    // since steamclient protobufs don't save/restore r2 before calling, use stubs to set r2 first
+    PS3_Write32(&(cmsgclientlogon_vt->SerializeWithCachedSizes), (uint32_t)SetTOCFor_CMsgClientLogon_SerializeWithCachedSizes_Hook);
+    PS3_Write32(&(cmsgclientlogon_vt->ByteSize), (uint32_t)SetTOCFor_CMsgClientLogon_ByteSize_Hook);
 }
 
 extern void *get_CCondenstationServerPlugin(); // defined in CCondenstationServerPlugin.cpp
@@ -450,11 +450,11 @@ int _prx_start(unsigned int args, unsigned int *argp)
     }
 
     // make sure memory read/write APIs are available and choose whether to use DEX or CEX syscalls
-    // TODO(Emma): add all the stuff for RPCS3 support from RB3Enhanced and add warning if no syscalls available (unlikely but possible)
+    // TODO(Emma): add warning if no syscalls available (unlikely but possible)
     PS3_MemoryWriteCheck();
 
     // steamclient_ps3 is always loaded at prx entrypoint when using addons folder on Portal 2
-    // TODO(Emma): this will need to be adjusted to wait for steamclient to be linked if using SPRX loaded at eboot entry
+    // MAYBE TODO(Emma): this will need to be adjusted to wait for steamclient to be linked if using SPRX loaded at eboot entry
     apply_steamclient_patches();
 
     return SYS_PRX_RESIDENT;
