@@ -265,7 +265,6 @@ void test_steamauthentication() {
     r = SteamAuthenticationInit();
     _sys_printf("SteamAuthenticationInit = %i\n", r);
 
-    
     uint8_t msg_buffer[0x400];
     size_t msg_size = 0;
     uint8_t out_buffer[0x800];
@@ -393,42 +392,59 @@ void test_steamauthentication() {
     }
 }
 
+void test_steamauthentication_username_and_password() {
+    int r = 0;
+    
+    r = SteamAuthenticationInit();
+    _sys_printf("SteamAuthenticationInit = %i\n", r);
+
+    uint8_t msg_buffer[0x400];
+    size_t msg_size = 0;
+    uint8_t out_buffer[0x800];
+    size_t out_size = sizeof(out_buffer);
+
+    uint8_t shitalloc_buffer[0x800];
+    shitalloc_data allocdata = {
+        .allocated = 0,
+        .max_size = sizeof(shitalloc_buffer),
+        .buffer = shitalloc_buffer
+    };
+    ProtobufCAllocator shitalloc = {
+        .alloc = shitalloc_alloc,
+        .free = shitalloc_free,
+        .allocator_data = &allocdata
+    };
+
+    CAuthenticationGetPasswordRSAPublicKeyRequest pubkeyreq;
+    cauthentication__get_password_rsapublic_key__request__init(&pubkeyreq);
+    pubkeyreq.account_name = "xxxxxx";
+
+    msg_size = cauthentication__get_password_rsapublic_key__request__get_packed_size(&pubkeyreq);
+    _sys_printf("msg_size = %i\n", msg_size);
+
+    cauthentication__get_password_rsapublic_key__request__pack(&pubkeyreq, msg_buffer);
+    out_size = sizeof(out_buffer);
+    SteamAuthenticationRPC(STEAMAUTH_GET, "GetPasswordRSAPublicKey", 1, msg_buffer, msg_size, out_buffer, &out_size);
+
+    _sys_printf("out_size = %i\n", out_size);
+    hexdump(out_buffer, out_size);
+
+    CAuthenticationGetPasswordRSAPublicKeyResponse *resp = 
+        cauthentication__get_password_rsapublic_key__response__unpack(&shitalloc, out_size, out_buffer);
+    
+    if (resp != NULL) {
+        if (resp->has_timestamp)    
+            _sys_printf("timestamp: %llu\n", resp->timestamp);
+        if (resp->publickey_exp != NULL)
+            _sys_printf("publickey_exp: %s\n", resp->publickey_exp);
+        if (resp->publickey_mod != NULL)
+            _sys_printf("publickey_mod: %s\n", resp->publickey_mod);
+    }
+}
+
 SteamPS3Params_t *steamPS3Params;
 steamclient_GetSteamPS3Params_t steamclient_GetSteamPS3Params;
-
 ISteamPS3OverlayRenderHost_t *renderHost = NULL;
-
-ISteamPS3OverlayRenderHost_DrawTexturedRect_t ISteamPS3OverlayRenderHost_DrawTexturedRect;
-int drawfreq = 0;
-int lastTextureId = 0;
-int lastXPos = 0;
-int lastYPos = 0;
-int lastXEnd = 0;
-int lastYEnd = 0;
-float lastu0 = 0;
-float lastv0 = 0;
-float lastu1 = 0;
-float lastv1 = 0;
-void ISteamPS3OverlayRenderHost_DrawTexturedRect_Hook(void *thisobj, int x0, int y0, int x1, int y1, float u0, float v0, float u1, float v1, int32_t iTextureID, uint32_t colorStart, uint32_t colorEnd, EOverlayGradientDirection_t eDirection)
-{
-    if (drawfreq == 60) {
-        printf("DrawTexturedRec(%p, %i, %i, %i, %i, %f, %f, %f, %f, %i, %08x, %08x, %i)\n", thisobj, x0, y0, x1, y1, u0, v0, u1, v1, iTextureID, colorStart, colorEnd, eDirection);
-        drawfreq = 0;
-        lastTextureId = iTextureID;
-        lastXPos = x0;
-        lastYPos = y0;
-        lastXEnd = x1;
-        lastYEnd = y1;
-        lastu0 = u0;
-        lastv0 = v0;
-        lastu1 = u1;
-        lastv1 = v1;
-    }
-    drawfreq++;
-    //colorEnd = colorEnd | 0xFF0000FF;
-    //eDirection = k_EOverlayGradientVertical;
-    ISteamPS3OverlayRenderHost_DrawTexturedRect(thisobj, x0, y0, x1, y1, u0, v0, u1, v1, iTextureID, colorStart, colorEnd, eDirection);
-}
 
 uint8_t whitetexture[4] = {0xff, 0xff, 0xff, 0xff};
 uint8_t qrcodetexture[40000];
@@ -506,7 +522,7 @@ void ISteamPS3OverlayRender_Render_Hook(void *thisobj)
 ISteamPS3OverlayRender_BHandleCellPadData_t ISteamPS3OverlayRender_BHandleCellPadData;
 bool ISteamPS3OverlayRender_BHandleCellPadData_Hook(void *thisobj, CellPadData *padData)
 {
-    if ((padData->button[2] & CELL_PAD_CTRL_R3))
+    if ((padData->button[CELL_PAD_BTN_OFFSET_DIGITAL1] & CELL_PAD_CTRL_R3))
         _sys_printf("r3\n");
     return ISteamPS3OverlayRender_BHandleCellPadData(thisobj, padData);
 }
@@ -514,7 +530,7 @@ bool ISteamPS3OverlayRender_BHandleCellPadData_Hook(void *thisobj, CellPadData *
 void apply_steamclient_patches()
 {
     //sys_ppu_thread_t loginThread;
-    //sys_ppu_thread_create(&loginThread, test_steamauthentication, NULL, 1024, 0x8000, SYS_PPU_THREAD_CREATE_JOINABLE, "test_steamauthentication");
+    //sys_ppu_thread_create(&loginThread, test_steamauthentication_username_and_password, NULL, 1024, 0x8000, SYS_PPU_THREAD_CREATE_JOINABLE, "test_steamauthentication");
 
     // initialise our SteamClient utility library
     SCUtils_Init();
@@ -588,6 +604,12 @@ void apply_steamclient_patches()
     PS3_Write32(&(cmsgclientlogon_vt->SerializeWithCachedSizes), (uint32_t)SetTOCFor_CMsgClientLogon_SerializeWithCachedSizes_Hook);
     PS3_Write32(&(cmsgclientlogon_vt->ByteSize), (uint32_t)SetTOCFor_CMsgClientLogon_ByteSize_Hook);
     PS3_Write32(&(cmsgclientlogonresponse_vt->MergePartialFromCodedStream), (uint32_t)SetTOCFor_CMsgClientLogonResponse_MergePartialFromCodedStream_Hook);
+
+    // patch urls used to fetch avatar urls
+    //SCUtils_ReplaceString("http://media.steampowered.com/steamcommunity/public/", "http://avatars.steamstatic.com/");
+    //SCUtils_ReplaceString("images/avatars/%.2s/%s.jpg", "%s.jpg");
+    //SCUtils_ReplaceString("images/avatars/%.2s/%s.jpg", "%s_full.jpg");
+    //SCUtils_ReplaceString("images/avatars/%.2s/%s.jpg", "%s_medium.jpg");
 }
 
 extern void *get_CCondenstationServerPlugin(); // defined in CCondenstationServerPlugin.cpp

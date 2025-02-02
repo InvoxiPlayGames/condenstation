@@ -134,7 +134,17 @@ void *SCUtils_LookupSteamAPINID(uint32_t nid)
 
 void SCUtils_ReplaceString(const char *source, const char *destination)
 {
-    // TODO(Emma): implement
+    // TODO(Emma): THIS DOESN'T WORK!
+    int srclen = strlen(source) + 1;
+    int dstlen = strlen(destination) + 1;
+    for (uint32_t i = 0; i < steamclient_seg[0].length - dstlen; i++)
+    {
+        if (memcmp((void *)(steamclient_seg[0].addr + i), source, srclen) == 0)
+        {
+            memcpy((void *)(steamclient_seg[0].addr + i), destination, dstlen);
+            return;
+        }
+    }
 }
 
 sc_protobuf_vtable_t *SCUtils_GetProtobufVtable(const char *protobuf_name)

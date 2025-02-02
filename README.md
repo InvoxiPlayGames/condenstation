@@ -26,15 +26,14 @@ This third-party project is not affiliated with nor endorsed by Valve Software.
 * [ ] Stubbing matchmaking (Portal 2 only)
     * Ideally we would figure out making it PS3/demo_viewer only, but that probably isn't possible.
 * [x] Implementing on-console login
-    * [x] QR code login (currently partial - has no UI nor QR rendering, but the code exists)
+    * [x] QR code login (currently partial - has rendering and functionality, but no UI/UX)
+    * [ ] Username/password + guard code login
     * [ ] Per-console encrypted token storage **(THIS IS VERY IMPORTANT)**
 
 ## TODO (nice-to-haves, not required)
 
 * [ ] Neat blog on what all this does and why it is how it is
-* [ ] More on-console login stuff
-    * [ ] Implementing on-console username/password + guard code login
-    * [ ] Multiple accounts (1 per PS3 user)
+* [ ] Multiple accounts (1 per PS3 user)
 * [ ] Built in no-PSN patching (maybe Portal 2 only)
 * [ ] Upgrade netfilter to use newer authenticated encryption
    * Not *required* but would avoid future deprecation.

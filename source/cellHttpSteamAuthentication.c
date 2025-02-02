@@ -131,6 +131,13 @@ int SteamAuthenticationRPC(int method_type, const char *rpc_name, int rpc_versio
     cellHttpUtilFormUrlEncode(req_b64uri, sizeof(req_b64uri), req_b64, strlen(req_b64), &required_uriencode);
     snprintf(req_body, sizeof(req_body), "input_protobuf_encoded=%s", req_b64uri);
     _sys_printf("built body: %s\n", req_body);
+    // append request body to uri for GET requests
+    char uri_get_path_buf[512];
+    if (method_type == STEAMAUTH_GET) {
+        snprintf(uri_get_path_buf, sizeof(uri_get_path_buf), "%s?%s", uri_path_buf, req_body);
+        uri.path = uri_get_path_buf;
+        _sys_printf("full GET path: https://api.steampowered.com:443/%s\n", uri_get_path_buf);
+    }
     // create a transaction
     CellHttpTransId trans;
     r = cellHttpCreateTransaction(&trans, client,
@@ -143,13 +150,15 @@ int SteamAuthenticationRPC(int method_type, const char *rpc_name, int rpc_versio
     }
     _sys_printf("transaction made\n");
     // set the headers
-    cellHttpRequestSetContentLength(trans, strlen(req_body));
-    CellHttpHeader contenttype = {
-        .name = "Content-Type",
-        .value = "application/x-www-form-urlencoded"
-    };
-    _sys_printf("adding header\n");
-    cellHttpRequestAddHeader(trans, &contenttype);
+    if (method_type == STEAMAUTH_POST) {
+        cellHttpRequestSetContentLength(trans, strlen(req_body));
+        CellHttpHeader contenttype = {
+            .name = "Content-Type",
+            .value = "application/x-www-form-urlencoded"
+        };
+        _sys_printf("adding header\n");
+        cellHttpRequestAddHeader(trans, &contenttype);
+    }
     // send the request
     _sys_printf("sending request\n");
     size_t sent_bytes = 0;
