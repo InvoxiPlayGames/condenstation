@@ -80,6 +80,7 @@ $(OUTPUT)/f_$(OUTNAME).sprx: $(BUILD_P)/output.prx
 	@echo "Creating FSPRX..."
 	@mkdir -p $(@D)
 	@$(MAKESELF_P) $^ $@
+	@cp $@ $(RPCS3_DIR)/dev_hdd0/game/BLES01222/USRDIR/portal2_dlc3/addons/condenstation/condenstation_ps3.sprx
 
 $(OUTPUT)/$(OUTNAME).sprx: $(BUILD_P)/output.prx
 	@echo "Creating signed SPRX..."

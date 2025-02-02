@@ -6,14 +6,18 @@
 #include <sys/timer.h>
 
 #include <cell/cell_fs.h>
+#include <cell/pad.h>
 
 #include <stdio.h>
 #include <string.h>
 #include <ppcasm.h>
 
 #include "inih.h"
+#include "steam_api.h"
+#include "ISteamPS3OverlayRender_c.h"
 #include "ps3_utilities.h"
 #include "CMsgClientLogonAutogen.h"
+#include "CMsgClientLogonResponseAutogen.h"
 #include "steamclient_utils.h"
 #include "steamclient_google_protobufs.h"
 #include "valve_ps3.h"
@@ -164,6 +168,24 @@ void CMsgClientLogon_SerializeWithCachedSizes_Hook(void *protobuf, void *outputC
     std_basic_string access_token;
     std_basic_string_constructor(&access_token, SteamAccessToken);
     WireFormatLite_WriteString(108, &access_token, outputCodedStream);
+}
+
+TOC_SETTER_STUB(CMsgClientLogonResponse_MergePartialFromCodedStream_Hook)
+ProtobufMergePartialFromCodedStream_t CMsgClientLogonResponse_MergePartialFromCodedStream;
+// hook when the client tries to deserialize CMsgClientLogonResponse so we know the result and can change it where necessary
+int CMsgClientLogonResponse_MergePartialFromCodedStream_Hook(void *protobuf, void *inputCodedStream)
+{
+    _sys_printf("CMsgClientLogonResponse_MergePartialFromCodedStream_Hook\n");
+    int r = CMsgClientLogonResponse_MergePartialFromCodedStream(protobuf, inputCodedStream);
+
+    CMsgClientLogonResponseAutogen *cmsg = (CMsgClientLogonResponseAutogen *)protobuf;
+
+    _sys_printf("logon EResult: %i\n", cmsg->eresult);
+
+    // uncomment to get the "link your psn to steam" screen
+    //cmsg->eresult = 57; // ExternalAccountUnlinked
+
+    return r;
 }
 
 static int INIHandler(void *user, const char *section, const char *name, const char *value) {
@@ -369,7 +391,81 @@ void test_steamauthentication() {
     }
 }
 
+SteamPS3Params_t *steamPS3Params;
 steamclient_GetSteamPS3Params_t steamclient_GetSteamPS3Params;
+
+ISteamPS3OverlayRenderHost_t *renderHost = NULL;
+
+ISteamPS3OverlayRenderHost_DrawTexturedRect_t ISteamPS3OverlayRenderHost_DrawTexturedRect;
+int drawfreq = 0;
+int lastTextureId = 0;
+int lastXPos = 0;
+int lastYPos = 0;
+int lastXEnd = 0;
+int lastYEnd = 0;
+float lastu0 = 0;
+float lastv0 = 0;
+float lastu1 = 0;
+float lastv1 = 0;
+void ISteamPS3OverlayRenderHost_DrawTexturedRect_Hook(void *thisobj, int x0, int y0, int x1, int y1, float u0, float v0, float u1, float v1, int32_t iTextureID, uint32_t colorStart, uint32_t colorEnd, EOverlayGradientDirection_t eDirection)
+{
+    if (drawfreq == 60) {
+        printf("DrawTexturedRec(%p, %i, %i, %i, %i, %f, %f, %f, %f, %i, %08x, %08x, %i)\n", thisobj, x0, y0, x1, y1, u0, v0, u1, v1, iTextureID, colorStart, colorEnd, eDirection);
+        drawfreq = 0;
+        lastTextureId = iTextureID;
+        lastXPos = x0;
+        lastYPos = y0;
+        lastXEnd = x1;
+        lastYEnd = y1;
+        lastu0 = u0;
+        lastv0 = v0;
+        lastu1 = u1;
+        lastv1 = v1;
+    }
+    drawfreq++;
+    //colorEnd = colorEnd | 0xFF0000FF;
+    //eDirection = k_EOverlayGradientVertical;
+    ISteamPS3OverlayRenderHost_DrawTexturedRect(thisobj, x0, y0, x1, y1, u0, v0, u1, v1, iTextureID, colorStart, colorEnd, eDirection);
+}
+
+uint8_t texture[4] = {0xff, 0xff, 0xff, 0xff};
+
+ISteamPS3OverlayRender_BHostInitialise_t ISteamPS3OverlayRender_BHostInitialise;
+bool ISteamPS3OverlayRender_BHostInitialise_Hook(void *thisobj, uint32_t unScreenWidth, uint32_t unScreenHeight, uint32_t unRefreshRate, void *pRenderHost, void *cellFontLib)
+{
+    _sys_printf("ISteamPS3OverlayRender::BHostInitialise\n");
+    _sys_printf("  SteamPS3OverlayRender: %p\n", thisobj);
+    _sys_printf("  unScreenWidth: %i\n", unScreenWidth);
+    _sys_printf("  unScreenHeight: %i\n", unScreenHeight);
+    _sys_printf("  unRefreshRate: %i\n", unRefreshRate);
+    _sys_printf("  pRenderHost: %p\n", pRenderHost);
+    _sys_printf("  cellFontLib: %p\n", cellFontLib);
+
+    if (renderHost == NULL) {
+        renderHost = pRenderHost;
+        // debug testing
+        ISteamPS3OverlayRenderHost_DrawTexturedRect = renderHost->vt->DrawTexturedRect;
+        PS3_Write32(&(renderHost->vt->DrawTexturedRect), (uint32_t)ISteamPS3OverlayRenderHost_DrawTexturedRect_Hook);
+        renderHost->vt->LoadOrUpdateTexture(renderHost, 3001, true, 0, 0, 1, 1, sizeof(texture), texture);
+    }
+
+    return ISteamPS3OverlayRender_BHostInitialise(thisobj, unScreenWidth, unScreenHeight, unRefreshRate, pRenderHost, cellFontLib);
+}
+
+ISteamPS3OverlayRender_Render_t ISteamPS3OverlayRender_Render;
+void ISteamPS3OverlayRender_Render_Hook(void *thisobj)
+{
+    ISteamPS3OverlayRender_Render(thisobj);
+    //renderHost->vt->DrawTexturedRect(renderHost, 200, 200, 250, 250, 0, 0, 1, 1, 3001, 0xFFE3008C, 0xFF0088FF, k_EOverlayGradientHorizontal);
+}
+
+ISteamPS3OverlayRender_BHandleCellPadData_t ISteamPS3OverlayRender_BHandleCellPadData;
+bool ISteamPS3OverlayRender_BHandleCellPadData_Hook(void *thisobj, CellPadData *padData)
+{
+    if ((padData->button[2] & CELL_PAD_CTRL_R3))
+        _sys_printf("r3\n");
+    return ISteamPS3OverlayRender_BHandleCellPadData(thisobj, padData);
+}
 
 void apply_steamclient_patches()
 {
@@ -381,15 +477,34 @@ void apply_steamclient_patches()
 
     // detect the current game by looking at the appid passed into steamclient
     steamclient_GetSteamPS3Params = SCUtils_LookupNID(NID_steamclient_GetSteamPS3Params);
-    if (steamclient_GetSteamPS3Params != NULL) {
-        SteamPS3Params_t *params = steamclient_GetSteamPS3Params();
-        use_v2_cmsgclientlogon = (params->m_unVersion == STEAM_PS3_CSGO_PARAMS_VER);
-        if (params->m_unVersion == STEAM_PS3_PORTAL2_PARAMS_VER)
+    if (steamclient_GetSteamPS3Params != NULL)
+    {
+        steamPS3Params = steamclient_GetSteamPS3Params();
+        use_v2_cmsgclientlogon = (steamPS3Params->m_unVersion == STEAM_PS3_CSGO_PARAMS_VER);
+        if (steamPS3Params->m_unVersion == STEAM_PS3_PORTAL2_PARAMS_VER)
             _sys_printf("portal 2!\n");
-        else if (params->m_unVersion == STEAM_PS3_CSGO_PARAMS_VER)
+        else if (steamPS3Params->m_unVersion == STEAM_PS3_CSGO_PARAMS_VER)
             _sys_printf("csgo!\n");
         else
             _sys_printf("what?\n");
+        
+        _sys_printf("m_nAppId = %i\n", steamPS3Params->m_nAppId);
+        _sys_printf("m_rgchInstallationPath = %s\n", steamPS3Params->m_rgchInstallationPath);
+        _sys_printf("m_rgchGameData = %s\n", steamPS3Params->m_rgchGameData);
+        _sys_printf("m_rgchSystemCache = %s\n", steamPS3Params->m_rgchSystemCache);
+    }
+
+    SteamAPI_ClassAccessor_t SteamPS3OverlayRender = SCUtils_LookupSteamAPINID(NID_SteamPS3OverlayRender);
+    if (SteamPS3OverlayRender != NULL) {
+        ISteamPS3OverlayRender_t *render = SteamPS3OverlayRender();
+        if (render != NULL) {
+            ISteamPS3OverlayRender_BHostInitialise = render->vt->BHostInitialise;
+            ISteamPS3OverlayRender_Render = render->vt->Render;
+            ISteamPS3OverlayRender_BHandleCellPadData = render->vt->BHandleCellPadData;
+            PS3_Write32(&(render->vt->BHostInitialise), (uint32_t)ISteamPS3OverlayRender_BHostInitialise_Hook);
+            PS3_Write32(&(render->vt->Render), (uint32_t)ISteamPS3OverlayRender_Render_Hook);
+            PS3_Write32(&(render->vt->BHandleCellPadData), (uint32_t)ISteamPS3OverlayRender_BHandleCellPadData_Hook);
+        }
     }
 
     // load our config file
@@ -424,10 +539,11 @@ void apply_steamclient_patches()
     // keep track of our original function ptr from the vtable
     CMsgClientLogon_SerializeWithCachedSizes = cmsgclientlogon_vt->SerializeWithCachedSizes;
     CMsgClientLogon_ByteSize = cmsgclientlogon_vt->ByteSize;
-
+    CMsgClientLogonResponse_MergePartialFromCodedStream = cmsgclientlogonresponse_vt->MergePartialFromCodedStream;
     // since steamclient protobufs don't save/restore r2 before calling, use stubs to set r2 first
     PS3_Write32(&(cmsgclientlogon_vt->SerializeWithCachedSizes), (uint32_t)SetTOCFor_CMsgClientLogon_SerializeWithCachedSizes_Hook);
     PS3_Write32(&(cmsgclientlogon_vt->ByteSize), (uint32_t)SetTOCFor_CMsgClientLogon_ByteSize_Hook);
+    PS3_Write32(&(cmsgclientlogonresponse_vt->MergePartialFromCodedStream), (uint32_t)SetTOCFor_CMsgClientLogonResponse_MergePartialFromCodedStream_Hook);
 }
 
 extern void *get_CCondenstationServerPlugin(); // defined in CCondenstationServerPlugin.cpp
