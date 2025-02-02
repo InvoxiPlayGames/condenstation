@@ -25,6 +25,8 @@
 #include "steammessages_auth.steamclient.pb-c.h"
 #include "steamclient_steamps3params.h"
 
+#include "libqrencode_qrencode.h"
+
 #define TOC_SETTER_STUB(x)                \
     void SetTOCFor_##x()                    \
     {                                     \
@@ -428,7 +430,33 @@ void ISteamPS3OverlayRenderHost_DrawTexturedRect_Hook(void *thisobj, int x0, int
     ISteamPS3OverlayRenderHost_DrawTexturedRect(thisobj, x0, y0, x1, y1, u0, v0, u1, v1, iTextureID, colorStart, colorEnd, eDirection);
 }
 
-uint8_t texture[4] = {0xff, 0xff, 0xff, 0xff};
+uint8_t whitetexture[4] = {0xff, 0xff, 0xff, 0xff};
+uint8_t qrcodetexture[40000];
+uint32_t qrcodewidth = 0;
+void QRcodeToRGBA(QRcode *code, uint8_t *out_texture, int32_t *out_texture_size)
+{
+    *out_texture_size = (code->width * code->width) * 4;
+    int texoffset = 0;
+    int qroffset = 0;
+    for (int x = 0; x < code->width; x++) {
+        for (int y = 0; y < code->width; y++) {
+            uint8_t qrbyte = code->data[qroffset++];
+            if ((qrbyte & 1) == 1) {
+                out_texture[texoffset++] = 0x00; //r
+                out_texture[texoffset++] = 0x00; //g
+                out_texture[texoffset++] = 0x00; //b
+                out_texture[texoffset++] = 0xFF; //a
+            } else {
+                out_texture[texoffset++] = 0xFF; //r
+                out_texture[texoffset++] = 0xFF; //g
+                out_texture[texoffset++] = 0xFF; //b
+                out_texture[texoffset++] = 0xFF; //a
+            }
+        }
+    }
+    _sys_printf("qroffset = %i\n", qroffset);
+    _sys_printf("texoffset = %i\n", texoffset);
+}
 
 ISteamPS3OverlayRender_BHostInitialise_t ISteamPS3OverlayRender_BHostInitialise;
 bool ISteamPS3OverlayRender_BHostInitialise_Hook(void *thisobj, uint32_t unScreenWidth, uint32_t unScreenHeight, uint32_t unRefreshRate, void *pRenderHost, void *cellFontLib)
@@ -443,10 +471,26 @@ bool ISteamPS3OverlayRender_BHostInitialise_Hook(void *thisobj, uint32_t unScree
 
     if (renderHost == NULL) {
         renderHost = pRenderHost;
-        // debug testing
-        ISteamPS3OverlayRenderHost_DrawTexturedRect = renderHost->vt->DrawTexturedRect;
-        PS3_Write32(&(renderHost->vt->DrawTexturedRect), (uint32_t)ISteamPS3OverlayRenderHost_DrawTexturedRect_Hook);
-        renderHost->vt->LoadOrUpdateTexture(renderHost, 3001, true, 0, 0, 1, 1, sizeof(texture), texture);
+
+        // empty texture for us to do stuff with
+        renderHost->vt->LoadOrUpdateTexture(renderHost, 3001, true, 0, 0, 1, 1, sizeof(whitetexture), whitetexture);
+/*
+        // example putting qr code into a texture
+
+        QRcode *code = QRcode_encodeString("https://s.team/a/1/youlostthegame", 20, QR_ECLEVEL_Q, QR_MODE_8, 1);
+        if (code != NULL) {
+            _sys_printf("qrcode rendered %p\n", code);
+            _sys_printf("qrcode is %ix%i\n", code->width, code->width);
+            _sys_printf("qrcode is %i bytes\n", code->width * code->width);
+            _sys_printf("qrcode texture size must be %i\n", (code->width * code->width) * 4);
+            int32_t out_tex_size = 0;
+            QRcodeToRGBA(code, qrcodetexture, &out_tex_size);
+            qrcodewidth = code->width;
+            _sys_printf("out_tex_size = %i\n", out_tex_size);
+            renderHost->vt->LoadOrUpdateTexture(renderHost, 3002, true, 0, 0, qrcodewidth, qrcodewidth, out_tex_size, qrcodetexture);
+            QRcode_free(code);
+        }
+*/
     }
 
     return ISteamPS3OverlayRender_BHostInitialise(thisobj, unScreenWidth, unScreenHeight, unRefreshRate, pRenderHost, cellFontLib);
@@ -456,7 +500,7 @@ ISteamPS3OverlayRender_Render_t ISteamPS3OverlayRender_Render;
 void ISteamPS3OverlayRender_Render_Hook(void *thisobj)
 {
     ISteamPS3OverlayRender_Render(thisobj);
-    //renderHost->vt->DrawTexturedRect(renderHost, 200, 200, 250, 250, 0, 0, 1, 1, 3001, 0xFFE3008C, 0xFF0088FF, k_EOverlayGradientHorizontal);
+    renderHost->vt->DrawTexturedRect(renderHost, 200, 200, 200 + (qrcodewidth * 4), 200 + (qrcodewidth * 4), 0, 0, 1, 1, 3002, 0xFFFFFFFF, 0xFFFFFFFF, k_EOverlayGradientHorizontal);
 }
 
 ISteamPS3OverlayRender_BHandleCellPadData_t ISteamPS3OverlayRender_BHandleCellPadData;

@@ -61,9 +61,12 @@ License version 2, or later, at your choice. Read LICENSE.txt for more.
 
 ## Third-Party Software
 
+See "third_party_licenses" for full license text.
+
 * [RB3Enhanced (PS3)](https://github.com/InvoxiPlayGames/RB3Enhanced) (GPLv2)
 * [inih](https://github.com/benhoyt/inih) (New BSD)
 * [protobuf-c](https://github.com/protobuf-c/protobuf-c) (BSD-2-Clause)
+* [libqrencode](https://github.com/fukuchi/libqrencode) (LGPLv2.1)
 
 ## Note to Valve
 
