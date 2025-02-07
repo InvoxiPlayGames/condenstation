@@ -25,6 +25,7 @@ PPUHOSTPATH_P := $(PS3SDKHOST)/ppu
 PPUTARGETPATH_P := $(PS3SDKTARGET)/ppu
 COMPILER_P := $(PPUHOSTPATH_P)/bin/ppu-lv2-gcc
 MAKESELF_P := $(TOOLPATH_P)/make_fself
+MAKESELFNPDRM_P := $(TOOLPATH_P)/make_fself_npdrm
 SCETOOL_P := $(SCETOOLPATH)/scetool
 # .o object files for PS3 compilation
 OBJECTS_P := $(subst $(SRC_DIR),$(BUILD_P),$(patsubst %.c,%.c.o,$(SOURCES))) $(subst $(SRC_DIR),$(BUILD_P),$(patsubst %.cpp,%.cpp.o,$(SOURCES_CPP)))
@@ -72,15 +73,24 @@ clean:
 
 # PS3 compilation, creates .SPRX file
 
-.PHONY: ps3 ps3_f
+.PHONY: ps3 ps3_f ps3_fnp rpcs3
 ps3_f: $(OUTPUT)/f_$(OUTNAME).sprx
 ps3: $(OUTPUT)/$(OUTNAME).sprx
+ps3_fnp: $(OUTPUT)/fnp_$(OUTNAME).sprx
+
+rpcs3: ps3_f
+	@cp $(OUTPUT)/f_$(OUTNAME).sprx $(RPCS3_DIR)/dev_hdd0/game/BLES01222/USRDIR/portal2_dlc3/addons/condenstation/condenstation_ps3.sprx
+	@cp $(OUTPUT)/f_$(OUTNAME).sprx $(RPCS3_DIR)/dev_hdd0/game/NPUB30589/USRDIR/csgo/addons/condenstation/condenstation_ps3.sprx
 
 $(OUTPUT)/f_$(OUTNAME).sprx: $(BUILD_P)/output.prx
 	@echo "Creating FSPRX..."
 	@mkdir -p $(@D)
 	@$(MAKESELF_P) $^ $@
-	@cp $@ $(RPCS3_DIR)/dev_hdd0/game/BLES01222/USRDIR/portal2_dlc3/addons/condenstation/condenstation_ps3.sprx
+
+$(OUTPUT)/fnp_$(OUTNAME).sprx: $(BUILD_P)/output.prx
+	@echo "Creating NP FSPRX..."
+	@mkdir -p $(@D)
+	@$(MAKESELFNPDRM_P) $^ $@
 
 $(OUTPUT)/$(OUTNAME).sprx: $(BUILD_P)/output.prx
 	@echo "Creating signed SPRX..."

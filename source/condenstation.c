@@ -12,6 +12,8 @@
 #include <string.h>
 #include <ppcasm.h>
 
+#include "cellHttpHelper.h"
+#include "memmem.h"
 #include "inih.h"
 #include "steam_api.h"
 #include "ISteamPS3OverlayRender_c.h"
@@ -185,9 +187,38 @@ int CMsgClientLogonResponse_MergePartialFromCodedStream_Hook(void *protobuf, voi
     _sys_printf("logon EResult: %i\n", cmsg->eresult);
 
     // uncomment to get the "link your psn to steam" screen
-    //cmsg->eresult = 57; // ExternalAccountUnlinked
+    if (cmsg->eresult != 1)
+        cmsg->eresult = 57; // ExternalAccountUnlinked
 
     return r;
+}
+
+typedef struct _netadr_t {
+    uint16_t port;
+    uint32_t ip;
+    int type;
+} netadr_t;
+
+netadr_t netadr_to_use;
+int CUtlVector_AddMultipleToTail_netadr(void *utlvector, int count, netadr_t *objects);
+int CUtlVector_AddMultipleToTail_netadr_hook(void *utlvector, int count, netadr_t *objects)
+{
+    // return a hardcoded netadr
+    _sys_printf("connecting to CM %08x:%i\n", netadr_to_use.ip, netadr_to_use.port);
+    return CUtlVector_AddMultipleToTail_netadr(utlvector, 1, &netadr_to_use);
+}
+
+bool IPaddrToNetadr(const char *in_ip_addr, netadr_t *out_netadr)
+{
+    int ip[4];
+    int port;
+    int scanned = sscanf(in_ip_addr, "%d.%d.%d.%d:%d", &(ip[0]), &(ip[1]), &(ip[2]), &(ip[3]), &port);
+    if (scanned < 4) return false;
+    if (scanned == 4) port = 27017;
+    out_netadr->type = 3;
+    out_netadr->ip = ((ip[0] & 0xFF) << 24) | ((ip[1] & 0xFF) << 16) | ((ip[2] & 0xFF) << 8) | (ip[3] & 0xFF);
+    out_netadr->port = port;
+    return true;
 }
 
 static int INIHandler(void *user, const char *section, const char *name, const char *value) {
@@ -223,230 +254,14 @@ bool parse_config_file(const char *file_path)
     // THIS MIGHT GET BROADCAST OVER UDP ON YOUR NETWORK LOL
     //_sys_printf("SteamAccessToken = %s\n", SteamAccessToken);
     _sys_printf("SteamCM = %s\n", SteamCM);
+    if (!IPaddrToNetadr(SteamCM, &netadr_to_use))
+        _sys_printf("failed to parse SteamCM to netadr\n");
     return true;
-}
-
-typedef struct _shitalloc_data {
-    uint8_t *buffer;
-    size_t allocated;
-    size_t max_size;
-} shitalloc_data;
-
-static void *shitalloc_alloc(shitalloc_data *data, size_t len) {
-    void *buf = data->buffer + data->allocated;
-    data->allocated += len;
-    return buf;
-}
-
-static void shitalloc_free(shitalloc_data *data, void *buf) {
-    return; //hahahahha you thought
-}
-
-void save_credentials(const char *file_path) {
-    char inifile[0x1000];
-    int fd = -1;
-    snprintf(inifile, sizeof(inifile), "[Account]\nUsername=%s\nRefreshToken=%s\n", SteamUsername, SteamAccessToken);
-    CellFsErrno r = cellFsOpen(file_path, CELL_FS_O_WRONLY, &fd, NULL, 0);
-    if (r != CELL_FS_SUCCEEDED)
-        return false;
-    uint64_t bytesWrite = 0;
-    cellFsWrite(fd, inifile, strlen(inifile), &bytesWrite);
-    cellFsClose(fd);
-}
-
-// fully self-contained authentication test
-// TODO(Emma):
-//   - Render QR code on-screen
-//   - Handle failure
-//   - Do it triggered by user-action
-void test_steamauthentication() {
-    int r = 0;
-    
-    r = SteamAuthenticationInit();
-    _sys_printf("SteamAuthenticationInit = %i\n", r);
-
-    uint8_t msg_buffer[0x400];
-    size_t msg_size = 0;
-    uint8_t out_buffer[0x800];
-    size_t out_size = sizeof(out_buffer);
-
-    uint8_t shitalloc_buffer[0x400];
-    shitalloc_data allocdata = {
-        .allocated = 0,
-        .max_size = sizeof(shitalloc_buffer),
-        .buffer = shitalloc_buffer
-    };
-    ProtobufCAllocator shitalloc = {
-        .alloc = shitalloc_alloc,
-        .free = shitalloc_free,
-        .allocator_data = &allocdata
-    };
-
-    CAuthenticationDeviceDetails details;
-    cauthentication__device_details__init(&details);
-    // TODO: the device friendly name should use the PS3's name
-    details.device_friendly_name = "condenstation on PS3";
-    details.has_os_type = true;
-    details.os_type = 20; // Windows 11 - for PS3, it's -300.
-    details.has_platform_type = true;
-    details.platform_type = EAUTH_TOKEN_PLATFORM_TYPE__k_EAuthTokenPlatformType_SteamClient;
-    
-    CAuthenticationBeginAuthSessionViaQRRequest req;
-    cauthentication__begin_auth_session_via_qr__request__init(&req);
-    req.device_friendly_name = "condenstation on PS3";
-    req.has_platform_type = true;
-    req.platform_type = EAUTH_TOKEN_PLATFORM_TYPE__k_EAuthTokenPlatformType_SteamClient;
-    req.website_id = "Client";
-    req.device_details = &details;
-
-    msg_size = cauthentication__begin_auth_session_via_qr__request__get_packed_size(&req);
-    _sys_printf("msg_size = %i\n", msg_size);
-
-    cauthentication__begin_auth_session_via_qr__request__pack(&req, msg_buffer);
-
-    out_size = sizeof(out_buffer);
-    SteamAuthenticationRPC(STEAMAUTH_POST, "BeginAuthSessionViaQR", 1, msg_buffer, msg_size, out_buffer, &out_size);
-
-    _sys_printf("out_size = %i\n", out_size);
-    hexdump(out_buffer, out_size);
-
-    CAuthenticationBeginAuthSessionViaQRResponse *resp = 
-        cauthentication__begin_auth_session_via_qr__response__unpack(&shitalloc, out_size, out_buffer);
-
-    if (resp->has_client_id)
-        _sys_printf("client id = %llu\n", resp->client_id);
-    if (resp->challenge_url != NULL)
-        _sys_printf("challenge url = %s\n", resp->challenge_url);
-    if (resp->has_request_id) {
-        _sys_printf("request id = ");
-        hexdump(resp->request_id.data, resp->request_id.len);
-    }
-    if (resp->has_interval)
-        _sys_printf("interval = %.2f\n", resp->interval);
-    if (resp->has_version)
-        _sys_printf("version = %i\n", resp->version);
-    if (resp->n_allowed_confirmations > 0) {
-        for (int i = 0; i < resp->n_allowed_confirmations; i++) {
-            _sys_printf("allowed confirmation [%i] type = %i\n", i, resp->allowed_confirmations[i]->confirmation_type);
-        }
-    }
-
-    uint64_t current_client_id = resp->client_id;
-    uint8_t current_request_id[0x20];
-    size_t request_id_size = resp->request_id.len;
-    memcpy(current_request_id, resp->request_id.data, request_id_size);
-
-    // clear our shitalloc
-    resp = NULL;
-    memset(shitalloc_buffer, 0, sizeof(shitalloc_buffer));
-    allocdata.allocated = 0;
-
-    bool auth_session_running = true;
-
-    while (auth_session_running) {
-        sys_timer_sleep(5);
-
-        CAuthenticationPollAuthSessionStatusRequest pollreq;
-        cauthentication__poll_auth_session_status__request__init(&pollreq);
-        pollreq.client_id = current_client_id;
-        pollreq.has_client_id = true;
-
-        pollreq.request_id.data = current_request_id;
-        pollreq.request_id.len = request_id_size;
-        pollreq.has_request_id = true;
-
-        msg_size = cauthentication__poll_auth_session_status__request__get_packed_size(&pollreq);
-        _sys_printf("msg_size = %i\n", msg_size);
-
-        msg_size = cauthentication__poll_auth_session_status__request__pack(&pollreq, msg_buffer);
-        // if the buffer has a trailing zero then get rid of it
-        if (msg_buffer[msg_size - 1] == 0)
-            msg_size -= 1;
-
-        out_size = sizeof(out_buffer);
-        SteamAuthenticationRPC(STEAMAUTH_POST, "PollAuthSessionStatus", 1, msg_buffer, msg_size, out_buffer, &out_size);
-
-        _sys_printf("out_size = %i\n", out_size);
-        //hexdump(out_buffer, out_size);
-
-        CAuthenticationPollAuthSessionStatusResponse *pollresp = 
-            cauthentication__poll_auth_session_status__response__unpack(&shitalloc, out_size, out_buffer);
-        
-        if (pollresp->has_new_client_id) {
-            _sys_printf("new client id: %llu\n", pollresp->new_client_id);
-            current_client_id = pollresp->new_client_id;
-        }
-        if (pollresp->new_challenge_url != NULL) {
-            _sys_printf("new challenge url: %s\n", pollresp->new_challenge_url);
-        }
-        if (pollresp->account_name != NULL && pollresp->access_token != NULL) {
-            _sys_printf("we are LOGGED IN CHAT!!\n");
-            _sys_printf("account name: %s\n", pollresp->account_name);
-            //_sys_printf("access token: snip\n");
-            //_sys_printf("refresh token: snip\n");
-            strncpy(SteamUsername, pollresp->account_name, sizeof(SteamUsername));
-            strncpy(SteamAccessToken, pollresp->refresh_token, sizeof(SteamAccessToken));
-            auth_session_running = false;
-            save_credentials("/dev_hdd0/tmp/condenstation.ini");
-        }
-    }
-}
-
-void test_steamauthentication_username_and_password() {
-    int r = 0;
-    
-    r = SteamAuthenticationInit();
-    _sys_printf("SteamAuthenticationInit = %i\n", r);
-
-    uint8_t msg_buffer[0x400];
-    size_t msg_size = 0;
-    uint8_t out_buffer[0x800];
-    size_t out_size = sizeof(out_buffer);
-
-    uint8_t shitalloc_buffer[0x800];
-    shitalloc_data allocdata = {
-        .allocated = 0,
-        .max_size = sizeof(shitalloc_buffer),
-        .buffer = shitalloc_buffer
-    };
-    ProtobufCAllocator shitalloc = {
-        .alloc = shitalloc_alloc,
-        .free = shitalloc_free,
-        .allocator_data = &allocdata
-    };
-
-    CAuthenticationGetPasswordRSAPublicKeyRequest pubkeyreq;
-    cauthentication__get_password_rsapublic_key__request__init(&pubkeyreq);
-    pubkeyreq.account_name = "xxxxxx";
-
-    msg_size = cauthentication__get_password_rsapublic_key__request__get_packed_size(&pubkeyreq);
-    _sys_printf("msg_size = %i\n", msg_size);
-
-    cauthentication__get_password_rsapublic_key__request__pack(&pubkeyreq, msg_buffer);
-    out_size = sizeof(out_buffer);
-    SteamAuthenticationRPC(STEAMAUTH_GET, "GetPasswordRSAPublicKey", 1, msg_buffer, msg_size, out_buffer, &out_size);
-
-    _sys_printf("out_size = %i\n", out_size);
-    hexdump(out_buffer, out_size);
-
-    CAuthenticationGetPasswordRSAPublicKeyResponse *resp = 
-        cauthentication__get_password_rsapublic_key__response__unpack(&shitalloc, out_size, out_buffer);
-    
-    if (resp != NULL) {
-        if (resp->has_timestamp)    
-            _sys_printf("timestamp: %llu\n", resp->timestamp);
-        if (resp->publickey_exp != NULL)
-            _sys_printf("publickey_exp: %s\n", resp->publickey_exp);
-        if (resp->publickey_mod != NULL)
-            _sys_printf("publickey_mod: %s\n", resp->publickey_mod);
-    }
 }
 
 SteamPS3Params_t *steamPS3Params;
 steamclient_GetSteamPS3Params_t steamclient_GetSteamPS3Params;
-ISteamPS3OverlayRenderHost_t *renderHost = NULL;
 
-uint8_t whitetexture[4] = {0xff, 0xff, 0xff, 0xff};
 uint8_t qrcodetexture[40000];
 uint32_t qrcodewidth = 0;
 void QRcodeToRGBA(QRcode *code, uint8_t *out_texture, int32_t *out_texture_size)
@@ -474,58 +289,11 @@ void QRcodeToRGBA(QRcode *code, uint8_t *out_texture, int32_t *out_texture_size)
     _sys_printf("texoffset = %i\n", texoffset);
 }
 
-ISteamPS3OverlayRender_BHostInitialise_t ISteamPS3OverlayRender_BHostInitialise;
-bool ISteamPS3OverlayRender_BHostInitialise_Hook(void *thisobj, uint32_t unScreenWidth, uint32_t unScreenHeight, uint32_t unRefreshRate, void *pRenderHost, void *cellFontLib)
-{
-    _sys_printf("ISteamPS3OverlayRender::BHostInitialise\n");
-    _sys_printf("  SteamPS3OverlayRender: %p\n", thisobj);
-    _sys_printf("  unScreenWidth: %i\n", unScreenWidth);
-    _sys_printf("  unScreenHeight: %i\n", unScreenHeight);
-    _sys_printf("  unRefreshRate: %i\n", unRefreshRate);
-    _sys_printf("  pRenderHost: %p\n", pRenderHost);
-    _sys_printf("  cellFontLib: %p\n", cellFontLib);
+void ApplyOverlayHooks(ISteamPS3OverlayRender_t *renderer);
 
-    if (renderHost == NULL) {
-        renderHost = pRenderHost;
-
-        // empty texture for us to do stuff with
-        renderHost->vt->LoadOrUpdateTexture(renderHost, 3001, true, 0, 0, 1, 1, sizeof(whitetexture), whitetexture);
-/*
-        // example putting qr code into a texture
-
-        QRcode *code = QRcode_encodeString("https://s.team/a/1/youlostthegame", 20, QR_ECLEVEL_Q, QR_MODE_8, 1);
-        if (code != NULL) {
-            _sys_printf("qrcode rendered %p\n", code);
-            _sys_printf("qrcode is %ix%i\n", code->width, code->width);
-            _sys_printf("qrcode is %i bytes\n", code->width * code->width);
-            _sys_printf("qrcode texture size must be %i\n", (code->width * code->width) * 4);
-            int32_t out_tex_size = 0;
-            QRcodeToRGBA(code, qrcodetexture, &out_tex_size);
-            qrcodewidth = code->width;
-            _sys_printf("out_tex_size = %i\n", out_tex_size);
-            renderHost->vt->LoadOrUpdateTexture(renderHost, 3002, true, 0, 0, qrcodewidth, qrcodewidth, out_tex_size, qrcodetexture);
-            QRcode_free(code);
-        }
-*/
-    }
-
-    return ISteamPS3OverlayRender_BHostInitialise(thisobj, unScreenWidth, unScreenHeight, unRefreshRate, pRenderHost, cellFontLib);
-}
-
-ISteamPS3OverlayRender_Render_t ISteamPS3OverlayRender_Render;
-void ISteamPS3OverlayRender_Render_Hook(void *thisobj)
-{
-    ISteamPS3OverlayRender_Render(thisobj);
-    renderHost->vt->DrawTexturedRect(renderHost, 200, 200, 200 + (qrcodewidth * 4), 200 + (qrcodewidth * 4), 0, 0, 1, 1, 3002, 0xFFFFFFFF, 0xFFFFFFFF, k_EOverlayGradientHorizontal);
-}
-
-ISteamPS3OverlayRender_BHandleCellPadData_t ISteamPS3OverlayRender_BHandleCellPadData;
-bool ISteamPS3OverlayRender_BHandleCellPadData_Hook(void *thisobj, CellPadData *padData)
-{
-    if ((padData->button[CELL_PAD_BTN_OFFSET_DIGITAL1] & CELL_PAD_CTRL_R3))
-        _sys_printf("r3\n");
-    return ISteamPS3OverlayRender_BHandleCellPadData(thisobj, padData);
-}
+typedef void (*CSteamEngine_InitCDNCache_t)(void *csteamengine);
+toc_stub CSteamEngine_InitCDNCache_stub;
+CSteamEngine_InitCDNCache_t CSteamEngine_InitCDNCache = &CSteamEngine_InitCDNCache_stub;
 
 void apply_steamclient_patches()
 {
@@ -555,22 +323,14 @@ void apply_steamclient_patches()
     }
 
     SteamAPI_ClassAccessor_t SteamPS3OverlayRender = SCUtils_LookupSteamAPINID(NID_SteamPS3OverlayRender);
-    if (SteamPS3OverlayRender != NULL) {
+    // don't apply overlay hooks to csgo
+    if (SteamPS3OverlayRender != NULL && !use_v2_cmsgclientlogon) {
         ISteamPS3OverlayRender_t *render = SteamPS3OverlayRender();
-        if (render != NULL) {
-            ISteamPS3OverlayRender_BHostInitialise = render->vt->BHostInitialise;
-            ISteamPS3OverlayRender_Render = render->vt->Render;
-            ISteamPS3OverlayRender_BHandleCellPadData = render->vt->BHandleCellPadData;
-            PS3_Write32(&(render->vt->BHostInitialise), (uint32_t)ISteamPS3OverlayRender_BHostInitialise_Hook);
-            PS3_Write32(&(render->vt->Render), (uint32_t)ISteamPS3OverlayRender_Render_Hook);
-            PS3_Write32(&(render->vt->BHandleCellPadData), (uint32_t)ISteamPS3OverlayRender_BHandleCellPadData_Hook);
-        }
+        ApplyOverlayHooks(render);
     }
 
     // load our config file
     parse_config_file("/dev_hdd0/tmp/condenstation.ini");
-
-    // TODO: patching CM addresses
 
     // get the vtables of the protobuf objects we want to modify
     sc_protobuf_vtable_t *cmsgclientlogon_vt = SCUtils_GetProtobufVtable("CMsgClientLogon");
@@ -584,6 +344,15 @@ void apply_steamclient_patches()
     _sys_printf("copying steamclient toc from %08x to %08x\n", steamclient_toc, condenstation_toc);
     PS3_WriteMemory(condenstation_toc, (void *)steamclient_toc, 0x800);
     PS3_SetPluginTOCBase(get_toc_base());
+
+    // find the functions required to hook CM addresses
+    uint32_t ccminterfaceconnect = SCUtils_FindCCMInterfaceConnect();
+    _sys_printf("CCMInterface::Connect = %08x\n", ccminterfaceconnect);
+    uint32_t addmultipletotail = SCUtils_GetFirstBranchTargetAfterInstruction(ccminterfaceconnect, 0x7c8407b4, 120);
+    _sys_printf("CUtlVector<>::AddMultipleToTail = %08x\n", addmultipletotail);
+    //uint32_t basyncconnect = SCUtils_GetFirstBranchTargetAfterInstruction(ccminterfaceconnect, 0x38e0004b, 150);
+    //_sys_printf("CCMConnection::BAsyncConnect = %08x\n", basyncconnect);
+    HookFunction(addmultipletotail, FUNC_PTR(CUtlVector_AddMultipleToTail_netadr), FUNC_PTR(CUtlVector_AddMultipleToTail_netadr_hook));
 
     // find useful protobuf functions that we need
     // can be found by checking for the first bl in CMsgClientLogon::GetTypeName
@@ -605,11 +374,19 @@ void apply_steamclient_patches()
     PS3_Write32(&(cmsgclientlogon_vt->ByteSize), (uint32_t)SetTOCFor_CMsgClientLogon_ByteSize_Hook);
     PS3_Write32(&(cmsgclientlogonresponse_vt->MergePartialFromCodedStream), (uint32_t)SetTOCFor_CMsgClientLogonResponse_MergePartialFromCodedStream_Hook);
 
-    // patch urls used to fetch avatar urls
-    //SCUtils_ReplaceString("http://media.steampowered.com/steamcommunity/public/", "http://avatars.steamstatic.com/");
-    //SCUtils_ReplaceString("images/avatars/%.2s/%s.jpg", "%s.jpg");
-    //SCUtils_ReplaceString("images/avatars/%.2s/%s.jpg", "%s_full.jpg");
-    //SCUtils_ReplaceString("images/avatars/%.2s/%s.jpg", "%s_medium.jpg");
+    // patch strings used to fetch avatar urls
+    SCUtils_ReplaceString("http://media.steampowered.com/steamcommunity/public/", "http://avatars.steamstatic.com/");
+    SCUtils_ReplaceString("images/avatars/%.2s/%s.jpg", "%s.jpg");
+    SCUtils_ReplaceString("images/avatars/%.2s/%s_full.jpg", "%s_full.jpg");
+    SCUtils_ReplaceString("images/avatars/%.2s/%s_medium.jpg", "%s_medium.jpg");
+
+    // find the global CSteamEngine and CSteamEngine::InitCDNCache, re-init the cache with the new URLs
+    uint32_t g_pSteamEngineAddr = SCUtils_FindSteamEngine();
+    _sys_printf("g_pSteamEngineAddr = %08x\n", g_pSteamEngineAddr);
+    CSteamEngine_InitCDNCache_stub.func = SCUtils_FindCSteamEngineInitCDNCache();
+    _sys_printf("CSteamEngine::InitCDNCache = %08x\n", CSteamEngine_InitCDNCache_stub.func);
+    CSteamEngine_InitCDNCache_stub.toc = steamclient_toc;
+    CSteamEngine_InitCDNCache((void *)g_pSteamEngineAddr);
 }
 
 extern void *get_CCondenstationServerPlugin(); // defined in CCondenstationServerPlugin.cpp

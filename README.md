@@ -18,32 +18,40 @@ This third-party project is not affiliated with nor endorsed by Valve Software.
 ## TODO (required for release)
 
 * [x] Logging into Steam using a modern access token
-* [ ] Connecting to Steam without any external tools or PRX patches
-* [x] Reading account details from a config file
+* [x] Connecting to Steam without any external tools or PRX patches
+* [x] Reading account details and CM address from a config file
     * [ ] Game-specific config file using the paths given to SteamAPI
 * [x] Make binary version independent - no hardcoding addresses!
 * [ ] Using `GetCMList` API and patching the existing binary's CM list
 * [ ] Stubbing matchmaking (Portal 2 only)
     * Ideally we would figure out making it PS3/demo_viewer only, but that probably isn't possible.
 * [x] Implementing on-console login
-    * [x] QR code login (currently partial - has rendering and functionality, but no UI/UX)
+    * [ ] QR code login
+        * [x] Steam auth backend logic
+        * [x] QR code renderer
+        * [x] Steam Overlay hooks for displaying QR code
+        * [ ] UI/UX for end user
     * [ ] Username/password + guard code login
+        * [ ] Password RSA-4096 encryption
+        * [ ] Steam Guard mobile prompt
+        * [ ] Steam Guard email/mobile code
+        * [ ] UI/UX for end user
     * [ ] Per-console encrypted token storage **(THIS IS VERY IMPORTANT)**
 
 ## TODO (nice-to-haves, not required)
 
 * [ ] Neat blog on what all this does and why it is how it is
+* [ ] Functioning on RPCS3
 * [ ] Multiple accounts (1 per PS3 user)
 * [ ] Built in no-PSN patching (maybe Portal 2 only)
-* [ ] Upgrade netfilter to use newer authenticated encryption
-   * Not *required* but would avoid future deprecation.
 * [ ] Fixing or stubbing Steam Cloud
    * Anything to get rid of the endless "Syncing" on the menu.
+* [ ] Upgrade netfilter to use newer authenticated encryption
+   * Not *required* but would ~~avoid future deprecation.~~ be nice. It's unlikely legacy netfilter would be deprecated as they'd break any old game's dedicated server unless they asked admins to upgrade steamclient.
 * [ ] CS:GO - this will be hard!
    * Uses AppID [720](https://steamdb.info/app/720/). Nobody owns this, so all calls fail by default! :(
    * Trying to use another AppID leads to "Searching" forever, even in private lobbies. Could entirely rely on [dedicated servers](https://steamdb.info/app/790/).
    * Needs a lot more research...
-* [ ] Updating Portal 2's netcode to match the Steam Deck update - this might be impossible!
 
 ## License
 

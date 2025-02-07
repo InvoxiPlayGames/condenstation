@@ -13,4 +13,4 @@
         asm("li 0, " LINE_STRING ";"); \
     }
 
-// unused (for now) in condenstation but we might need it if we do other function hooks
+FUNC_STUB(CUtlVector_AddMultipleToTail_netadr)

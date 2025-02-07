@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "memmem.h"
+#include "ps3_utilities.h"
 #include "steamclient_protobuf_vtable.h"
 
 extern int _sys_printf(char *fmt, ...);
@@ -18,6 +19,11 @@ static seg_info steamclient_seg[2];
 uint32_t SCUtils_BaseAddress()
 {
     return steamclient_seg[0].addr;
+}
+
+uint32_t SCUtils_BaseAddress_Data()
+{
+    return steamclient_seg[1].addr;
 }
 
 void SCUtils_Init()
@@ -42,6 +48,29 @@ void SCUtils_Init()
     steamclient_seg[1].length = (uint32_t)modInfo.segments[1].memsz;
     _sys_printf("steamclient_ps3(0): 0x%08x\n", steamclient_seg[0].addr);
     _sys_printf("steamclient_ps3(1): 0x%08x\n", steamclient_seg[1].addr);
+}
+
+// not a steamclient thing but who's counting?
+void SCUtils_GetModuleAddresses(const char * module_name, size_t num_segments, uint32_t *seg_addrs, uint32_t *seg_sizes)
+{
+    char filenameBuf[1024];
+    sys_prx_segment_info_t segments[32];
+    sys_prx_module_info_t modInfo = {0};
+    modInfo.size = sizeof(modInfo);
+    modInfo.filename = filenameBuf;
+    modInfo.filename_size = sizeof(filenameBuf);
+    modInfo.segments = segments;
+    modInfo.segments_num = 32;
+
+    // look up the steamclient module
+    sys_prx_id_t prxId = sys_prx_get_module_id_by_name(module_name, 0, NULL);
+    sys_prx_get_module_info(prxId, 0, &modInfo);
+
+    // keep track of our base addresses
+    for (size_t i = 0; i < num_segments; i++) {
+        seg_addrs[i] = (uint32_t)modInfo.segments[i].base;
+        seg_sizes[i] = (uint32_t)modInfo.segments[i].memsz;
+    }
 }
 
 void *SCUtils_LookupNID(uint32_t nid)
@@ -134,16 +163,13 @@ void *SCUtils_LookupSteamAPINID(uint32_t nid)
 
 void SCUtils_ReplaceString(const char *source, const char *destination)
 {
-    // TODO(Emma): THIS DOESN'T WORK!
     int srclen = strlen(source) + 1;
     int dstlen = strlen(destination) + 1;
-    for (uint32_t i = 0; i < steamclient_seg[0].length - dstlen; i++)
-    {
-        if (memcmp((void *)(steamclient_seg[0].addr + i), source, srclen) == 0)
-        {
-            memcpy((void *)(steamclient_seg[0].addr + i), destination, dstlen);
-            return;
-        }
+    void *ptr = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, source, srclen);
+    if (ptr != NULL) {
+        _sys_printf("patching \"%s\" @ %p to \"%s\"\n", source, ptr, destination);
+        PS3_WriteMemory((uint32_t)ptr, destination, dstlen);
+        _sys_printf("\"%s\"\n", (char *)ptr);
     }
 }
 
@@ -218,7 +244,7 @@ uint32_t SCUtils_GetFirstBranchTargetAfterInstruction(uint32_t start_address, ui
         } else {
             // check if it's a linked branch
             if ((current_insr >> 26) == 18 && (current_insr & 0x48000001) == 0x48000001) {
-                _sys_printf("hit blr %08x\n", current_insr);
+                _sys_printf("hit bl %08x\n", current_insr);
                 branch_instruction = current_insr;
                 instruction_address = (uint32_t)(func_to_scan + i);
                 break;
@@ -229,7 +255,7 @@ uint32_t SCUtils_GetFirstBranchTargetAfterInstruction(uint32_t start_address, ui
     // nope out if we don't have an instruction
     if (branch_instruction == 0)
     {
-        _sys_printf("failed to find branch instruction (e%i)\n", waiting_for_instruction);
+        _sys_printf("failed to find branch instruction (e%i) after %i\n", waiting_for_instruction, scan_length);
         return 0;
     }
 
@@ -240,4 +266,107 @@ uint32_t SCUtils_GetFirstBranchTargetAfterInstruction(uint32_t start_address, ui
         branch_offset -= 0x4000000;
     
     return instruction_address + branch_offset;
+}
+
+uint32_t SCUtils_FindCCMInterfaceConnect()
+{
+    // find the pointer to the psn log message string
+    const char *psn_string = "User is on PSN (%s), now connecting to Steam";
+    void *psn_string_ptr = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, psn_string, strlen(psn_string));
+    if (psn_string_ptr == NULL) {
+        _sys_printf("failed to find psn string\n");
+        return 0;
+    }
+    uint32_t psn_string_addr = (uint32_t)psn_string_ptr;
+
+    // build the part of the function that references this string and scan for it
+    uint32_t on_psn_notif_instrs[3];
+    on_psn_notif_instrs[0] = 0x3C800000 + ((psn_string_addr >> 16) & 0xFFFF); // lis r4, ?
+    on_psn_notif_instrs[1] = 0x30610134; // addic r3, r1, 0x134
+    on_psn_notif_instrs[2] = 0x30840000 + (psn_string_addr & 0xFFFF); // addic/subic r4, r4, ?
+    // if the lower halfword of the address is 0x8000 then it's a subic and will be subtracting off the first one
+    if ((psn_string_addr & 0xFFFF) >= 0x8000)
+        on_psn_notif_instrs[0] += 1;
+    void *on_psn_notif_midfunc = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, on_psn_notif_instrs, sizeof(on_psn_notif_instrs));
+    if (on_psn_notif_midfunc == NULL) {
+        _sys_printf("failed to find psn notif midfunc\n");
+        return NULL;
+    }
+    uint32_t on_psn_notif_addr = (uint32_t)on_psn_notif_midfunc;
+
+    // find the branch to CCMInterface::Connect (preceded by ori r3, r31, 0x0)
+    uint32_t ccminterface_connect = SCUtils_GetFirstBranchTargetAfterInstruction(on_psn_notif_addr, 0x63e30000, 26);
+
+    return ccminterface_connect;
+}
+
+// TODO(Emma): make a more generic function finder function so you can find functions with just one function
+uint32_t SCUtils_FindCSteamEngineInitCDNCache()
+{
+    // find part of the CSteamEngine::InitCDNCache function
+    uint32_t init_cdn_cache_instrs[4] = {
+        0x38800000, // li r4, 0
+        0x98830000, // stb r4, 0x0(r3)
+        0x30630001, // addic r3, r3, 0x1
+        0x4800000c, // b 0xC - we shouldn't be doing this! but it's the same across all binaries, so it's okay
+    };
+    void *init_cdn_cache_midfunc = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, init_cdn_cache_instrs, sizeof(init_cdn_cache_instrs));
+    if (init_cdn_cache_midfunc == NULL) {
+        _sys_printf("can't find init cdn cache midfunc\n");
+        return 0;
+    }
+    uint32_t *init_cdn_cache_midfunc_arr = (uint32_t *)init_cdn_cache_midfunc;
+    // reverse backwards in the array to find the start of the function
+    for (int i = 0; i < 40; i++) {
+        // stdu r1, -0x280(r1) - stack size is the same between all binaries
+        if (init_cdn_cache_midfunc_arr[-i] == 0xf821fd81)
+            return (uint32_t)&(init_cdn_cache_midfunc_arr[-i]);
+    }
+    _sys_printf("failed to find start of init cdn cache\n");
+    return 0;
+}
+
+uint32_t SCUtils_FindSteamEngine()
+{
+    // find part of the CAppInfoCache::WriteToDisk function
+    uint32_t write_to_disk_instrs[4] = {
+        0x607f0000, // ori r31, r3, 0x0
+        0x38800400, // li r4, 0x400
+        0x63830000, // ori r3, r28, 0x0
+        0x38a00400, // li r5, 0x400
+    };
+    void *write_to_disk_midfunc = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, write_to_disk_instrs, sizeof(write_to_disk_instrs));
+    if (write_to_disk_midfunc == NULL) {
+        _sys_printf("can't find write to disk midfunc");
+        return 0;
+    }
+    uint32_t *write_to_disk_midfunc_arr = (uint32_t *)write_to_disk_midfunc;
+    // run through the instructions until we find an instruction that happens right after the call to ISteamEngine::GetConnectedUniverse
+    int i = 0;
+    for (i = 0; i < 30; i++) {
+        // rldicl r4, r3, 0, 32
+        if (write_to_disk_midfunc_arr[i] == 0x78640020)
+            break;
+    }
+    if (i >= 29) {
+        _sys_printf("can't find rldicl after getconnecteduniverse\n");
+        return 0;
+    }
+    // then go back to before that call to find where r3 gets set
+    int j = 0;
+    uint32_t g_pSteamEngineAddr = 0;
+    for (j = 1; j < 6; j++) {
+        // check if it's "lis r3, 0x????"
+        if ((write_to_disk_midfunc_arr[i - j] & 0xFFFF0000) == 0x3c600000)
+        {
+            // extract the address reference from this
+            uint16_t hi = (uint16_t)(write_to_disk_midfunc_arr[i - j] & 0xFFFF); // lis
+            uint16_t lo = (uint16_t)(write_to_disk_midfunc_arr[i - j + 1] & 0xFFFF); // addic/subic
+            if (lo >= 0x8000) hi--; // remove 1 from hi if it's a subic
+            g_pSteamEngineAddr = (hi << 16) | lo;
+            break;
+        }
+    }
+
+    return g_pSteamEngineAddr;
 }
