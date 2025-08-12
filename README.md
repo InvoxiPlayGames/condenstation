@@ -59,6 +59,7 @@ Read LICENSE.txt for more.
 
 * [relt from "SourceSPMP"](https://github.com/SourceSPMP/PS3Plugins) discovered Portal 2's ability to load native PRX addons without any game patches directly ([video](https://www.youtube.com/watch?v=3_jE5osEfRo)), as well as implemented the first re-implementation of crossplay (via direct IP connection, rather than Steam - meaning it will work forever!). Huge props.
 * [SteamKit2](https://github.com/SteamRE/SteamKit) and SteamDB helped out a ton by having a documented history of the Steam3 communications protocol, as well as examples of how modern authentication and server communication is supposed to work. They've effectively documented almost every Steam3 protocol difference over the past 12+ years with their source code and commit history. Thanks!
+* [open-steamworks](https://github.com/SteamRE/open-steamworks) and [OpenSteamClient](https://github.com/OpenSteamClient/OpenSteamworks) helped massively in reversing steamclient internals and IClient interfaces.
 * [vxzip](https://github.com/CRACKbomber/vxzip) was used to create the XZP2 files used by the console versions of the game.
 * [nta](https://ntauthority.me) helped me get my bearings around Protobufs, SteamClient and the Steam API. Thanks! :3
 
