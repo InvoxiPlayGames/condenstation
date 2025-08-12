@@ -37,9 +37,9 @@ endif
 INCLUDES_P := $(PPUHOSTPATH_P)/lib/gcc/ppu-lv2/$(GCC_VER_P)/include \
 				$(PPUTARGETPATH_P)/include $(INC_DIR)
 # library directories
-LIBDIR_P := $(PPUPATH_P)/lib 
+LIBDIR_P := $(PPUTARGETPATH_P)/lib 
 # library includes
-LIBS_P := -lstdc++ -lsupc++ -lfs_stub -lsysmodule_stub -lhttp_stub -lhttp_util_stub -lssl_stub -lnet_stub -lsysutil_stub -lc_stub
+LIBS_P := -lstdc++ -lsupc++ -lfs_stub -lsysmodule_stub -lhttp_stub -lhttp_util_stub -lssl_stub -lnet_stub -lsysutil_stub -lsysutil_userinfo_stub -lc_stub -lnetctl_stub -lsha1
 # compiler flags
 CFLAGS_P := -O2 -Wall -Wno-format-extra-args -x c -std=gnu99 \
 			$(patsubst %,-D%,$(DEFINES)) \
@@ -51,7 +51,7 @@ CFLAGS_CPP_P := -O2 -Wall -Wno-format-extra-args -x c++ \
 			-mcpu=cell -fPIC \
 			$(patsubst %,-I %,$(INCLUDES_P)) -iquote src
 # linker flags for final compile
-LFLAGS_P := -mprx -zgenprx $(LIBS_P)
+LFLAGS_P := -mprx -zgenprx -L $(PPUTARGETPATH_P)/lib/hash $(LIBS_P)
 # scetool flags for signed output
 SCETOOLFLAGS_P := --sce-type=SELF --compress-data=TRUE --skip-sections=FALSE \
 				--key-revision=04 \

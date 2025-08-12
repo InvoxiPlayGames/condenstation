@@ -33,7 +33,7 @@ typedef struct _SteamPS3ParamsInternal_t {
     int m_nVersion;
     int m_eUniverse;
     const char *m_pchCMForce;
-    bool m_bAutoReloadVGUIResources;
+    bool m_bAutoReloadVGUIResources; // m_nVersion == 1, but requires SDK 116x
 } SteamPS3ParamsInternal_t;
 
 typedef struct _SteamPS3Params_t {

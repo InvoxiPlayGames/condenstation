@@ -12,6 +12,7 @@
 #include <string.h>
 #include <ppcasm.h>
 
+#include "condenstation_config.h"
 #include "cellHttpHelper.h"
 #include "memmem.h"
 #include "inih.h"
@@ -56,10 +57,6 @@ static uint32_t get_toc_base()
     asm("mr 3, 2;");
 }
 
-char SteamCM[0x40];
-char SteamUsername[0x80];
-char SteamAccessToken[0x400];
-
 std_basic_string username_bs;
 
 // we need "toc stub"s for these functions because we are setting by address rather than setting from other function pointers
@@ -97,7 +94,7 @@ void fix_up_CMsgClientLogon(CMsgClientLogonAutogen *cmsg)
     // if we haven't got one already, set up a username
     if ((cmsg->enabled_fields & 0x10000) == 0) {
         _sys_printf("adding an account name\n");
-        std_basic_string_constructor(&username_bs, SteamUsername);
+        std_basic_string_constructor(&username_bs, SteamAccountName);
         if (cmsg->account_name == NULL) {
             _sys_printf("setting to our username fake string - could crash\n");
             cmsg->account_name = &username_bs;
@@ -187,8 +184,12 @@ int CMsgClientLogonResponse_MergePartialFromCodedStream_Hook(void *protobuf, voi
     _sys_printf("logon EResult: %i\n", cmsg->eresult);
 
     // uncomment to get the "link your psn to steam" screen
-    if (cmsg->eresult != 1)
-        cmsg->eresult = 57; // ExternalAccountUnlinked
+    //if (cmsg->eresult != 1)
+    //    cmsg->eresult = 57; // ExternalAccountUnlinked
+
+    if (cmsg->eresult != 1) {
+        // logon failed - trigger a user prompt to start QR code authentication
+    }
 
     return r;
 }
@@ -218,44 +219,6 @@ bool IPaddrToNetadr(const char *in_ip_addr, netadr_t *out_netadr)
     out_netadr->type = 3;
     out_netadr->ip = ((ip[0] & 0xFF) << 24) | ((ip[1] & 0xFF) << 16) | ((ip[2] & 0xFF) << 8) | (ip[3] & 0xFF);
     out_netadr->port = port;
-    return true;
-}
-
-static int INIHandler(void *user, const char *section, const char *name, const char *value) {
-    //_sys_printf("[%s] %s = %s\n", section, name, value);
-    if (strcmp(section, "Account") == 0) {
-        if (strcmp(name, "Username") == 0)
-            strncpy(SteamUsername, value, sizeof(SteamUsername));
-        else if (strcmp(name, "RefreshToken") == 0)
-            strncpy(SteamAccessToken, value, sizeof(SteamAccessToken));
-    } else if (strcmp(section, "Server") == 0) {
-        if (strcmp(name, "CM") == 0)
-            strncpy(SteamCM, value, sizeof(SteamCM));
-    }
-    return 1;
-}
-
-// parse the user info out of our config file
-bool parse_config_file(const char *file_path)
-{
-    int fd = -1;
-    CellFsErrno r = cellFsOpen(file_path, CELL_FS_O_RDONLY, &fd, NULL, 0);
-    if (r != CELL_FS_SUCCEEDED)
-        return false;
-    char configBuffer[4096];
-    memset(configBuffer, 0, sizeof(configBuffer));
-    uint64_t bytesRead = 0;
-    cellFsRead(fd, configBuffer, sizeof(configBuffer), &bytesRead);
-    cellFsClose(fd);
-    if (ini_parse_string(configBuffer, INIHandler, NULL) < 0)
-        return false;
-    _sys_printf("parsed ini successfully!\n");
-    _sys_printf("SteamUsername = %s\n", SteamUsername);
-    // THIS MIGHT GET BROADCAST OVER UDP ON YOUR NETWORK LOL
-    //_sys_printf("SteamAccessToken = %s\n", SteamAccessToken);
-    _sys_printf("SteamCM = %s\n", SteamCM);
-    if (!IPaddrToNetadr(SteamCM, &netadr_to_use))
-        _sys_printf("failed to parse SteamCM to netadr\n");
     return true;
 }
 
@@ -330,7 +293,13 @@ void apply_steamclient_patches()
     }
 
     // load our config file
-    parse_config_file("/dev_hdd0/tmp/condenstation.ini");
+    load_config();
+    if (HasConfigLoaded) {
+        _sys_printf("Loaded config, account: '%s'\n", SteamAccountName);
+    }
+
+    // set our CM address (our MITM)
+    IPaddrToNetadr("192.168.50.25:27017", &netadr_to_use);
 
     // get the vtables of the protobuf objects we want to modify
     sc_protobuf_vtable_t *cmsgclientlogon_vt = SCUtils_GetProtobufVtable("CMsgClientLogon");

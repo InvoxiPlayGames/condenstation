@@ -9,7 +9,7 @@
 #include "SteamAuthentication.h"
 #include "steammessages_auth.steamclient.pb-c.h"
 
-extern char SteamUsername[0x80];
+extern char SteamAccountName[0x80];
 extern char SteamAccessToken[0x400];
 
 typedef struct _shitalloc_data {

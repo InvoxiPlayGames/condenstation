@@ -5,12 +5,10 @@
 
 #include <cell/cell_fs.h>
 
+#include "condenstation_config.h"
 #include "cellHttpHelper.h"
 #include "SteamAuthentication.h"
 #include "steammessages_auth.steamclient.pb-c.h"
-
-extern char SteamUsername[0x80];
-extern char SteamAccessToken[0x400];
 
 typedef struct _shitalloc_data {
     uint8_t *buffer;
@@ -26,18 +24,6 @@ static void *shitalloc_alloc(shitalloc_data *data, size_t len) {
 
 static void shitalloc_free(shitalloc_data *data, void *buf) {
     return; //hahahahha you thought
-}
-
-void save_credentials(const char *file_path) {
-    char inifile[0x1000];
-    int fd = -1;
-    snprintf(inifile, sizeof(inifile), "[Account]\nUsername=%s\nRefreshToken=%s\n", SteamUsername, SteamAccessToken);
-    CellFsErrno r = cellFsOpen(file_path, CELL_FS_O_WRONLY, &fd, NULL, 0);
-    if (r != CELL_FS_SUCCEEDED)
-        return false;
-    uint64_t bytesWrite = 0;
-    cellFsWrite(fd, inifile, strlen(inifile), &bytesWrite);
-    cellFsClose(fd);
 }
 
 // fully self-contained authentication test
@@ -168,12 +154,10 @@ void test_steamauthentication() {
         if (pollresp->account_name != NULL && pollresp->access_token != NULL) {
             _sys_printf("we are LOGGED IN CHAT!!\n");
             _sys_printf("account name: %s\n", pollresp->account_name);
-            //_sys_printf("access token: snip\n");
-            //_sys_printf("refresh token: snip\n");
-            strncpy(SteamUsername, pollresp->account_name, sizeof(SteamUsername));
+            strncpy(SteamAccountName, pollresp->account_name, sizeof(SteamAccountName));
             strncpy(SteamAccessToken, pollresp->refresh_token, sizeof(SteamAccessToken));
             auth_session_running = false;
-            save_credentials("/dev_hdd0/tmp/condenstation.ini");
+            save_config();
         }
     }
 }

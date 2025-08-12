@@ -19,8 +19,7 @@ This third-party project is not affiliated with nor endorsed by Valve Software.
 
 * [x] Logging into Steam using a modern access token
 * [x] Connecting to Steam without any external tools or PRX patches
-* [x] Reading account details and CM address from a config file
-    * [ ] Game-specific config file using the paths given to SteamAPI
+* [x] Reading account details from a config file
 * [x] Make binary version independent - no hardcoding addresses!
 * [ ] Using `GetCMList` API and patching the existing binary's CM list
 * [ ] Stubbing matchmaking (Portal 2 only)
@@ -31,18 +30,15 @@ This third-party project is not affiliated with nor endorsed by Valve Software.
         * [x] QR code renderer
         * [x] Steam Overlay hooks for displaying QR code
         * [ ] UI/UX for end user
-    * [ ] Username/password + guard code login
-        * [ ] Password RSA-4096 encryption
-        * [ ] Steam Guard mobile prompt
-        * [ ] Steam Guard email/mobile code
-        * [ ] UI/UX for end user
-    * [ ] Per-console encrypted token storage **(THIS IS VERY IMPORTANT)**
+    * [x] Per-console encrypted token storage
+* [x] Multiple accounts (1 per PS3 user)
 
 ## TODO (nice-to-haves, not required)
 
+* [ ] Username/password + guard code login
+    * I'm putting this off due to the complexity involved. I'm sorry.
 * [ ] Neat blog on what all this does and why it is how it is
 * [ ] Functioning on RPCS3
-* [ ] Multiple accounts (1 per PS3 user)
 * [ ] Built in no-PSN patching (maybe Portal 2 only)
 * [ ] Fixing or stubbing Steam Cloud
    * Anything to get rid of the endless "Syncing" on the menu.
