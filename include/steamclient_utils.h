@@ -15,3 +15,4 @@ void SCUtils_GetModuleAddresses(const char * module_name, size_t num_segments, u
 uint32_t SCUtils_FindSteamEngine();
 uint32_t SCUtils_FindCCMInterfaceConnect();
 uint32_t SCUtils_FindCSteamEngineInitCDNCache();
+uint32_t SCUtils_FindCUserLogOn();

@@ -326,6 +326,32 @@ uint32_t SCUtils_FindCSteamEngineInitCDNCache()
     return 0;
 }
 
+uint32_t SCUtils_FindCUserLogOn() {
+    // find the start of the CUser::GetConsoleSteamID
+    // technically this isn't good because it's checking a hardcoded offset in CUser
+    uint32_t get_console_steamid_instrs[4] = {
+        0x88a40090, // lbz r5, 0x90(r4)
+        0x88c40091, // lbz r6, 0x91(r4)
+        0x88e40092, // lbz r7, 0x92(r4)
+        0x89040093, // lbz r8, 0x93(r4)
+    };
+    void *get_console_steamid_func = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, get_console_steamid_instrs, sizeof(get_console_steamid_instrs));
+    uint32_t get_console_steamid_addr = (uint32_t)get_console_steamid_func;
+
+    // get the toc entry for this function
+    uint32_t get_console_steamid_toc_entry[1] = { get_console_steamid_addr };
+    void *get_console_steamid_toc = own_memmem((void *)steamclient_seg[1].addr, steamclient_seg[1].length, get_console_steamid_toc_entry, sizeof(get_console_steamid_toc_entry));
+    uint32_t get_console_steamid_toc_addr = (uint32_t)get_console_steamid_toc;
+
+    // find the CUser vtable from that toc entry
+    uint32_t get_console_steamid_vt_entry[1] = { get_console_steamid_toc_addr };
+    void *get_console_steamid_vt_pos = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, get_console_steamid_vt_entry, sizeof(get_console_steamid_vt_entry));
+    uint32_t get_console_steamid_vt_addr = (uint32_t)get_console_steamid_vt_pos;
+
+    // -0xC is CUser::LogOn in the CUser vtable
+    return get_console_steamid_vt_addr - 0xC;
+}
+
 uint32_t SCUtils_FindSteamEngine()
 {
     // find part of the CAppInfoCache::WriteToDisk function

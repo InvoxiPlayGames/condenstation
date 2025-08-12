@@ -3,6 +3,7 @@
 #include <sys/syscall.h>
 #include <sys/process.h>
 #include <sys/ppu_thread.h>
+#include <sysutil/sysutil_msgdialog.h>
 #include <sys/timer.h>
 
 #include <cell/cell_fs.h>
@@ -18,6 +19,7 @@
 #include "inih.h"
 #include "steam_api.h"
 #include "ISteamPS3OverlayRender_c.h"
+#include "ISteamMatchmaking_c.h"
 #include "ps3_utilities.h"
 #include "CMsgClientLogonAutogen.h"
 #include "CMsgClientLogonResponseAutogen.h"
@@ -188,7 +190,9 @@ int CMsgClientLogonResponse_MergePartialFromCodedStream_Hook(void *protobuf, voi
     //    cmsg->eresult = 57; // ExternalAccountUnlinked
 
     if (cmsg->eresult != 1) {
-        // logon failed - trigger a user prompt to start QR code authentication
+        // logon failed for some reason - act like we don't have a config loaded
+        // next interactive logon should trigger a QR code authentication
+        HasConfigLoaded = false;
     }
 
     return r;
@@ -200,6 +204,7 @@ typedef struct _netadr_t {
     int type;
 } netadr_t;
 
+bool has_netadr = false;
 netadr_t netadr_to_use;
 int CUtlVector_AddMultipleToTail_netadr(void *utlvector, int count, netadr_t *objects);
 int CUtlVector_AddMultipleToTail_netadr_hook(void *utlvector, int count, netadr_t *objects)
@@ -222,35 +227,14 @@ bool IPaddrToNetadr(const char *in_ip_addr, netadr_t *out_netadr)
     return true;
 }
 
+void SetCMNetadr(const char *in_ip_addr)
+{
+    IPaddrToNetadr(in_ip_addr, &netadr_to_use);
+    has_netadr = true;   
+}
+
 SteamPS3Params_t *steamPS3Params;
 steamclient_GetSteamPS3Params_t steamclient_GetSteamPS3Params;
-
-uint8_t qrcodetexture[40000];
-uint32_t qrcodewidth = 0;
-void QRcodeToRGBA(QRcode *code, uint8_t *out_texture, int32_t *out_texture_size)
-{
-    *out_texture_size = (code->width * code->width) * 4;
-    int texoffset = 0;
-    int qroffset = 0;
-    for (int x = 0; x < code->width; x++) {
-        for (int y = 0; y < code->width; y++) {
-            uint8_t qrbyte = code->data[qroffset++];
-            if ((qrbyte & 1) == 1) {
-                out_texture[texoffset++] = 0x00; //r
-                out_texture[texoffset++] = 0x00; //g
-                out_texture[texoffset++] = 0x00; //b
-                out_texture[texoffset++] = 0xFF; //a
-            } else {
-                out_texture[texoffset++] = 0xFF; //r
-                out_texture[texoffset++] = 0xFF; //g
-                out_texture[texoffset++] = 0xFF; //b
-                out_texture[texoffset++] = 0xFF; //a
-            }
-        }
-    }
-    _sys_printf("qroffset = %i\n", qroffset);
-    _sys_printf("texoffset = %i\n", texoffset);
-}
 
 void ApplyOverlayHooks(ISteamPS3OverlayRender_t *renderer);
 
@@ -258,11 +242,125 @@ typedef void (*CSteamEngine_InitCDNCache_t)(void *csteamengine);
 toc_stub CSteamEngine_InitCDNCache_stub;
 CSteamEngine_InitCDNCache_t CSteamEngine_InitCDNCache = &CSteamEngine_InitCDNCache_stub;
 
+void *stored_cuser = 0;
+uint64_t stored_steamid = 0;
+typedef void (*CUser_LogOn_t)(void *cuser, bool bInteractive, uint64_t steamid);
+CUser_LogOn_t CUser_LogOn;
+
+void QRoverlay_start_displaying_qr(const char *url);
+
+bool has_pending_interactive_logon = false;
+void dispatch_pending_logon(bool fail) {
+    // don't dispatch this if we don't have an interactive logon pending
+    if (!has_pending_interactive_logon)
+        return;
+
+    if (!use_v2_cmsgclientlogon) {
+        // TODO(Emma): this relies on hardcoded offsets kinda so only works on latest Portal 2
+        //             does it matter? for release no, but for future plans yes
+        uint8_t *cuser_raw = (uint8_t *)stored_cuser;
+        *(int *)(cuser_raw + 0x28 + 0x3F8) = fail ? 0 : 1;
+        // setting this value causes the CCMInterface::Connect to fail
+    }
+    // dispatch the original call to CUser::LogOn
+    CUser_LogOn(stored_cuser, true, stored_steamid);
+}
+
+sys_ppu_thread_t loginThread;
+
+void qr_code_auth_thread();
+void logon_initial_dialog_callback(int buttonType, void *userData)
+{
+    if (buttonType == CELL_MSGDIALOG_BUTTON_YES) {
+        // start the QR code authentication process
+        sys_ppu_thread_create(&loginThread, qr_code_auth_thread, NULL, 1024, 0x8000, SYS_PPU_THREAD_CREATE_JOINABLE, "condenstation_QRLogin");
+    } else {
+        // fail the logon if any other option was selected
+        dispatch_pending_logon(true);
+    }
+}
+
+bool has_fatal_error = false;
+char fatal_error_text[256];
+void set_fatal_error(const char *text) {
+    strncpy(fatal_error_text, text, sizeof(fatal_error_text));
+    has_fatal_error = true;
+}
+
+void nullcb(int a, void *b) {}
+
+void CUser_LogOn_Hook(void *cuser, bool bInteractive, uint64_t steamid) {
+    _sys_printf("CUser::LogOn(%p, %i, %p) called!\n", cuser, bInteractive, steamid);
+    stored_cuser = cuser;
+    stored_steamid = steamid;
+    uint8_t *cuser_raw = (uint8_t *)cuser;
+    // display a fatal error first and foremost if we have one queued
+    if (has_fatal_error) {
+        if (bInteractive) {
+            cellMsgDialogOpen2(CELL_MSGDIALOG_TYPE_BUTTON_TYPE_OK | CELL_MSGDIALOG_TYPE_SE_TYPE_ERROR, 
+                fatal_error_text, nullcb, NULL, NULL);
+        }
+        // fail the logon
+        if (!use_v2_cmsgclientlogon)
+            *(int *)(cuser_raw + 0x28 + 0x3F8) = 0;
+        CUser_LogOn(cuser, bInteractive, steamid);
+    }
+    // if we don't have a netadr
+    if (!has_netadr) {
+        if (bInteractive) {
+            cellMsgDialogOpen2(CELL_MSGDIALOG_TYPE_BUTTON_TYPE_OK | CELL_MSGDIALOG_TYPE_SE_TYPE_NORMAL, 
+                "condenstation is still trying to connect to Steam, please try again in a few seconds.", nullcb, NULL, NULL);
+        }
+        // fail the logon
+        if (!use_v2_cmsgclientlogon)
+            *(int *)(cuser_raw + 0x28 + 0x3F8) = 0;
+        CUser_LogOn(cuser, bInteractive, steamid);
+    }
+    // if we don't have a saved account, decide whether to fail the logon or start the QR flow based on interactivity
+    if (!HasConfigLoaded) {
+        if (bInteractive) {
+            has_pending_interactive_logon = true;
+            cellMsgDialogOpen2(
+                CELL_MSGDIALOG_TYPE_BUTTON_TYPE_YESNO |
+                CELL_MSGDIALOG_TYPE_DISABLE_CANCEL_ON |
+                CELL_MSGDIALOG_TYPE_SE_TYPE_NORMAL,
+                "You don't have a Steam account connected to condenstation yet,\nwould you like to sign in using a QR code?\n\n(You need Steam Guard Mobile Authenticator to use this.)",
+                logon_initial_dialog_callback, NULL, NULL);
+        } else {
+            // fail the logon
+            if (!use_v2_cmsgclientlogon)
+                *(int *)(cuser_raw + 0x28 + 0x3F8) = 0;
+            CUser_LogOn(cuser, bInteractive, steamid);
+        }
+    } else {
+        // dispatch the logon as usual
+        CUser_LogOn(cuser, bInteractive, steamid);
+    }
+}
+
+void get_cm_thread();
+
+int ISteamMatchmaking_RequestLobbyList_Hook(void *thisobj) {
+    _sys_printf("Preventing call to RequestLobbyList.\n");
+    cellMsgDialogOpen2(CELL_MSGDIALOG_TYPE_BUTTON_TYPE_OK | CELL_MSGDIALOG_TYPE_SE_TYPE_ERROR,
+        "Sorry, you can't search for random players with condenstation.", nullcb, NULL, NULL);
+    return -1;
+}
+
+void shillthread() {
+    if (!use_v2_cmsgclientlogon) {
+        cellMsgDialogOpen2(CELL_MSGDIALOG_TYPE_BUTTON_TYPE_NONE | CELL_MSGDIALOG_TYPE_DISABLE_CANCEL_ON | CELL_MSGDIALOG_TYPE_SE_TYPE_NORMAL,
+        "welcome to condenstation beta 1 for Portal 2!\n\nhttps://github.com/InvoxiPlayGames/condenstation", nullcb, NULL, NULL);
+        cellMsgDialogClose(5690);
+    } else {
+        cellMsgDialogOpen2(CELL_MSGDIALOG_TYPE_BUTTON_TYPE_NONE | CELL_MSGDIALOG_TYPE_DISABLE_CANCEL_ON | CELL_MSGDIALOG_TYPE_SE_TYPE_ERROR,
+        "condenstation beta 1 - CS:GO IS NOT SUPPORTED!\n\nhttps://github.com/InvoxiPlayGames/condenstation", nullcb, NULL, NULL);
+        cellMsgDialogClose(5690);
+    }
+}
+
 void apply_steamclient_patches()
 {
-    //sys_ppu_thread_t loginThread;
-    //sys_ppu_thread_create(&loginThread, test_steamauthentication_username_and_password, NULL, 1024, 0x8000, SYS_PPU_THREAD_CREATE_JOINABLE, "test_steamauthentication");
-
     // initialise our SteamClient utility library
     SCUtils_Init();
 
@@ -292,14 +390,18 @@ void apply_steamclient_patches()
         ApplyOverlayHooks(render);
     }
 
+    // hook steam matchmaking so we can't search for lobbies
+    SteamAPI_ClassAccessor_t SteamMatchmaking = SCUtils_LookupSteamAPINID(NID_SteamMatchmaking);
+    if (SteamMatchmaking != NULL) {
+        ISteamMatchmaking_t *mm = SteamMatchmaking();
+        PS3_Write32(&(mm->vt->RequestLobbyList), (uint32_t)ISteamMatchmaking_RequestLobbyList_Hook);
+    }
+
     // load our config file
-    load_config();
+    load_auth_config();
     if (HasConfigLoaded) {
         _sys_printf("Loaded config, account: '%s'\n", SteamAccountName);
     }
-
-    // set our CM address (our MITM)
-    IPaddrToNetadr("192.168.50.25:27017", &netadr_to_use);
 
     // get the vtables of the protobuf objects we want to modify
     sc_protobuf_vtable_t *cmsgclientlogon_vt = SCUtils_GetProtobufVtable("CMsgClientLogon");
@@ -356,6 +458,20 @@ void apply_steamclient_patches()
     _sys_printf("CSteamEngine::InitCDNCache = %08x\n", CSteamEngine_InitCDNCache_stub.func);
     CSteamEngine_InitCDNCache_stub.toc = steamclient_toc;
     CSteamEngine_InitCDNCache((void *)g_pSteamEngineAddr);
+
+    // find and hook CUser::LogOn's vtable entry
+    if (!use_v2_cmsgclientlogon) {
+        uint32_t cuserLogon = SCUtils_FindCUserLogOn();
+        _sys_printf("CUser::LogOn vtable entry = %08x\n", cuserLogon);
+        CUser_LogOn = (CUser_LogOn_t)*(uint32_t *)cuserLogon; // :(
+        PS3_Write32(cuserLogon, (uint32_t)CUser_LogOn_Hook);
+    }
+
+    sys_ppu_thread_t cmrequest_thread;
+    sys_ppu_thread_create(&cmrequest_thread, get_cm_thread, NULL, 1024, 0x8000, SYS_PPU_THREAD_CREATE_JOINABLE, "condenstation_CMList");
+
+    sys_ppu_thread_t shill_thread;
+    sys_ppu_thread_create(&shill_thread, shillthread, NULL, 1024, 0x8000, SYS_PPU_THREAD_CREATE_JOINABLE, "condenstation_shill");
 }
 
 extern void *get_CCondenstationServerPlugin(); // defined in CCondenstationServerPlugin.cpp

@@ -92,8 +92,8 @@ int condenstation_init_cellHttp()
         return r;
     }
     cellHttpClientSetVersion(current_cellHttp_client, 1, 1);
-    // TODO(Emma): fill in these values properly
-    cellHttpClientSetUserAgent(current_cellHttp_client, "condenstation/1.0 PS3/4.91 Portal2/1.04-EUR-DG");
+    // TODO(Emma): fill in these values with info of the game e.g. PS3/4.91 Portal2/1.04-EUR
+    cellHttpClientSetUserAgent(current_cellHttp_client, "condenstation/1.0");
     cellHttpClientSetSslCallback(current_cellHttp_client, ssl_callback, NULL);
 
     is_cellHttp_init = true;

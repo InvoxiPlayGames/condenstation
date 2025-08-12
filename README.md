@@ -1,44 +1,44 @@
-## NOT READY FOR GENERAL USE! BATTERIES NOT INCLUDED!
-
 # condenstation
 
-A PRX plugin to re-enable connecting to Steam for the PS3.
+A PRX plugin to re-enable connecting to Steam for the PS3 for Portal 2.
 
 This third-party project is not affiliated with nor endorsed by Valve Software.
 
-## !! IMPORTANT !!
+[Downloads are available here.](https://github.com/InvoxiPlayGames/condenstation/releases)
 
-* This is very work-in-progress. It requires a lot of manual setup, no downloads are provided.
+## Info
+
 * Only works with Portal 2 for now, and possibly forever.
     * You **must** own / have access to [Portal 2 on Steam](https://store.steampowered.com/app/620/).
-* **I am not responsible for any damage to your Steam account, PSN account or PS3 for using this.** You aren't breaking any Steam rules, nor are you cheating, so you should not get (VAC) banned, but I am not responsible if you do somehow.
-* PC Portal 2 co-op partners must be using the "demo_viewer" beta branch of Portal 2.
+* PC Portal 2 co-op partners **must** be using the "demo_viewer" beta branch of Portal 2.
+* This connects you to Valve's official Steam servers.
+* **I am not responsible for any damage to your Steam account, PSN account or PS3 for using this.**
+    You aren't breaking any Steam rules, nor are you cheating, so you should not get (VAC) banned,
+    but I am not responsible if you do somehow.
+    * There is risk in connecting a PS3 with CFW/HEN to PSN. Use an alternative account if you are
+    concerned.
+    * Your Steam and PSN account are **not** linked, your Steam account information is stored on your PS3.
+    * You may be banned from trophy websites for unlocking certain trophies, despite you being connected
+    to official servers.
+* If you have lots of Steam friends (100+), the game may appear frozen for several minutes when you log on.
+    Please have patience - it hasn't completely frozen!
 * **Team Fortress 2 (TF2) does not use Steam, and will NEVER be supported by this.**
 
-## TODO (required for release)
+An installation guide is found in the release download, or in [README_release.txt](https://github.com/InvoxiPlayGames/condenstation/blob/master/README_release.txt)
 
-* [x] Logging into Steam using a modern access token
-* [x] Connecting to Steam without any external tools or PRX patches
-* [x] Reading account details from a config file
-* [x] Make binary version independent - no hardcoding addresses!
-* [ ] Using `GetCMList` API and patching the existing binary's CM list
-* [ ] Stubbing matchmaking (Portal 2 only)
-    * Ideally we would figure out making it PS3/demo_viewer only, but that probably isn't possible.
-* [x] Implementing on-console login
-    * [ ] QR code login
-        * [x] Steam auth backend logic
-        * [x] QR code renderer
-        * [x] Steam Overlay hooks for displaying QR code
-        * [ ] UI/UX for end user
-    * [x] Per-console encrypted token storage
-* [x] Multiple accounts (1 per PS3 user)
+## TODO
 
-## TODO (nice-to-haves, not required)
+These are featured I would like to support in the future, but might not get around to.
 
 * [ ] Username/password + guard code login
     * I'm putting this off due to the complexity involved. I'm sorry.
+    * [ ] RSA-4096 encryption for passwords
+    * [ ] UI/UX for login flow
+* [ ] Codebase cleanup
 * [ ] Neat blog on what all this does and why it is how it is
+* [ ] Translating our strings into other languages (Russian, Spanish, Portuguese, etc)
 * [ ] Functioning on RPCS3
+    * [ ] Remove hook requirement for patching CM URLs. (Can we do it with a vtable replacement?)
 * [ ] Built in no-PSN patching (maybe Portal 2 only)
 * [ ] Fixing or stubbing Steam Cloud
    * Anything to get rid of the endless "Syncing" on the menu.
@@ -51,9 +51,9 @@ This third-party project is not affiliated with nor endorsed by Valve Software.
 
 ## License
 
-This isn't ready for the average person to use. This software is free software
-provided with absolutely no warranty under the terms of the GNU General Public
-License version 2, or later, at your choice. Read LICENSE.txt for more.
+This software is free software provided with absolutely no warranty under the
+terms of the GNU General Public License version 2, or later, at your choice.
+Read LICENSE.txt for more.
 
 ## Thanks/credits
 
@@ -70,9 +70,8 @@ See "third_party_licenses" for full license text.
 * [inih](https://github.com/benhoyt/inih) (New BSD)
 * [protobuf-c](https://github.com/protobuf-c/protobuf-c) (BSD-2-Clause)
 * [libqrencode](https://github.com/fukuchi/libqrencode) (LGPLv2.1)
+* [tPNG](https://github.com/jcorks/tPNG) (see license)
 
 ## Note to Valve
 
 If anyone at Valve has any concerns with this (security, backend stability, or otherwise) or has anything important they need to share, make an issue in the issue tracker if you're okay with being in public or send me an e-mail from a @valvesoftware.com address.
-
-Also pls add AppID 720 to the global sub. Also pls respond to me on H1.

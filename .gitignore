@@ -2,6 +2,8 @@
 *.sprx
 *.o
 *.elf
+*.zip
 build_ps3
 out
 data
+release

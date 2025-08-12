@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include <sysutil/sysutil_msgdialog.h>
 #include <cell/cell_fs.h>
 
 #include "condenstation_config.h"
@@ -26,14 +27,27 @@ static void shitalloc_free(shitalloc_data *data, void *buf) {
     return; //hahahahha you thought
 }
 
-// fully self-contained authentication test
-// TODO(Emma):
-//   - Render QR code on-screen
-//   - Handle failure
-//   - Do it triggered by user-action
-void test_steamauthentication() {
+bool auth_session_running = false;
+bool auth_session_success = false;
+
+// hooks_overlay.c
+void QRoverlay_start_displaying_qr(const char *url);
+void QRoverlay_stop_displaying_qr();
+
+// condenstation.c
+void dispatch_pending_logon(bool fail);
+
+void blankcb_formsgbox(int type, void *data) {}
+
+void qr_code_auth_thread() {
     int r = 0;
     
+    cellMsgDialogAbort();
+    cellMsgDialogOpen2(CELL_MSGDIALOG_TYPE_SE_TYPE_NORMAL |
+        CELL_MSGDIALOG_TYPE_BUTTON_TYPE_NONE |
+        CELL_MSGDIALOG_TYPE_DISABLE_CANCEL_ON,
+        "Connecting to Steam, please wait...", blankcb_formsgbox, NULL, NULL);
+
     r = condenstation_init_cellHttp();
     _sys_printf("condenstation_init_cellHttp = %i\n", r);
 
@@ -41,6 +55,8 @@ void test_steamauthentication() {
     size_t msg_size = 0;
     uint8_t out_buffer[0x800];
     size_t out_size = sizeof(out_buffer);
+
+    auth_session_success = false;
 
     uint8_t shitalloc_buffer[0x400];
     shitalloc_data allocdata = {
@@ -78,7 +94,8 @@ void test_steamauthentication() {
 
     out_size = sizeof(out_buffer);
     SteamAuthenticationRPC(STEAMAUTH_POST, "BeginAuthSessionViaQR", 1, msg_buffer, msg_size, out_buffer, &out_size);
-
+    // TODO(Emma): handle request failure
+    
     _sys_printf("out_size = %i\n", out_size);
     hexdump(out_buffer, out_size);
 
@@ -87,8 +104,10 @@ void test_steamauthentication() {
 
     if (resp->has_client_id)
         _sys_printf("client id = %llu\n", resp->client_id);
-    if (resp->challenge_url != NULL)
+    if (resp->challenge_url != NULL) {
         _sys_printf("challenge url = %s\n", resp->challenge_url);
+        QRoverlay_start_displaying_qr(resp->challenge_url);
+    }
     if (resp->has_request_id) {
         _sys_printf("request id = ");
         hexdump(resp->request_id.data, resp->request_id.len);
@@ -103,6 +122,8 @@ void test_steamauthentication() {
         }
     }
 
+    cellMsgDialogClose(0.5);
+
     uint64_t current_client_id = resp->client_id;
     uint8_t current_request_id[0x20];
     size_t request_id_size = resp->request_id.len;
@@ -113,7 +134,9 @@ void test_steamauthentication() {
     memset(shitalloc_buffer, 0, sizeof(shitalloc_buffer));
     allocdata.allocated = 0;
 
-    bool auth_session_running = true;
+    auth_session_running = true;
+
+    int timeout = 0;
 
     while (auth_session_running) {
         sys_timer_sleep(5);
@@ -137,6 +160,7 @@ void test_steamauthentication() {
 
         out_size = sizeof(out_buffer);
         SteamAuthenticationRPC(STEAMAUTH_POST, "PollAuthSessionStatus", 1, msg_buffer, msg_size, out_buffer, &out_size);
+        // TODO(Emma): handle request failure
 
         _sys_printf("out_size = %i\n", out_size);
         //hexdump(out_buffer, out_size);
@@ -150,14 +174,30 @@ void test_steamauthentication() {
         }
         if (pollresp->new_challenge_url != NULL) {
             _sys_printf("new challenge url: %s\n", pollresp->new_challenge_url);
+            QRoverlay_start_displaying_qr(pollresp->new_challenge_url);
         }
         if (pollresp->account_name != NULL && pollresp->access_token != NULL) {
             _sys_printf("we are LOGGED IN CHAT!!\n");
-            _sys_printf("account name: %s\n", pollresp->account_name);
+            HasConfigLoaded = true;
             strncpy(SteamAccountName, pollresp->account_name, sizeof(SteamAccountName));
             strncpy(SteamAccessToken, pollresp->refresh_token, sizeof(SteamAccessToken));
+            memset(SteamGuardData, 0, sizeof(SteamGuardData));
             auth_session_running = false;
-            save_config();
+            auth_session_success = true;
+            save_auth_config();
         }
+        timeout++;
+        // timeout after ~90 seconds
+        if (timeout > 18)
+            auth_session_running = false;
     }
+    if (!auth_session_success) {
+        _sys_printf("auth session failed\n");
+    }
+    QRoverlay_stop_displaying_qr();
+}
+
+void cancel_qr_auth_session() {
+    auth_session_running = false;
+    dispatch_pending_logon(!auth_session_success);
 }

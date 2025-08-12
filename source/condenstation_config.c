@@ -150,7 +150,7 @@ static bool decrypt_config_v1(cst_encrypted_config_v1_t *input, cst_config_v1_t 
     return true;
 }
 
-bool load_config() {
+bool load_auth_config() {
     HasConfigLoaded = false;
     memset(SteamAccountName, 0, sizeof(SteamAccountName));
     memset(SteamAccessToken, 0, sizeof(SteamAccessToken));
@@ -204,7 +204,7 @@ bool load_config() {
     HasConfigLoaded = true;
 }
 
-void save_config() {
+void save_auth_config() {
     // build the filename
     char config_filename[128];
     CellUserInfoUserStat userst;

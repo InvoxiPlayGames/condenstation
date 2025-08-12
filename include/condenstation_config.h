@@ -6,8 +6,9 @@
 extern bool HasConfigLoaded;
 extern char SteamAccountName[128];
 extern char SteamAccessToken[1024];
+extern char SteamGuardData[1024];
 
-bool load_config();
-void save_config();
+bool load_auth_config();
+void save_auth_config();
 
 #endif // _CONDENSTATION_CONFIG_H
