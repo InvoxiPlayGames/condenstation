@@ -347,14 +347,20 @@ int ISteamMatchmaking_RequestLobbyList_Hook(void *thisobj) {
     return -1;
 }
 
+bool memwrite_failed = false;
 void shillthread() {
+    if (memwrite_failed) {
+        cellMsgDialogOpen2(CELL_MSGDIALOG_TYPE_BUTTON_TYPE_OK | CELL_MSGDIALOG_TYPE_SE_TYPE_ERROR,
+        "condenstation wasn't able to apply its patches because syscalls were disabled.\n\nPlease restart the console, and only disable syscalls for PSN after condenstation has loaded.", nullcb, NULL, NULL);
+        return;
+    }
     if (!use_v2_cmsgclientlogon) {
         cellMsgDialogOpen2(CELL_MSGDIALOG_TYPE_BUTTON_TYPE_NONE | CELL_MSGDIALOG_TYPE_DISABLE_CANCEL_ON | CELL_MSGDIALOG_TYPE_SE_TYPE_NORMAL,
-        "welcome to condenstation beta 1 for Portal 2!\n\nhttps://github.com/InvoxiPlayGames/condenstation", nullcb, NULL, NULL);
+        "welcome to condenstation beta 2 for Portal 2!\n\nhttps://github.com/InvoxiPlayGames/condenstation", nullcb, NULL, NULL);
         cellMsgDialogClose(5690);
     } else {
         cellMsgDialogOpen2(CELL_MSGDIALOG_TYPE_BUTTON_TYPE_NONE | CELL_MSGDIALOG_TYPE_DISABLE_CANCEL_ON | CELL_MSGDIALOG_TYPE_SE_TYPE_ERROR,
-        "condenstation beta 1 - CS:GO IS NOT SUPPORTED!\n\nhttps://github.com/InvoxiPlayGames/condenstation", nullcb, NULL, NULL);
+        "condenstation beta 2 - CS:GO IS NOT SUPPORTED!\n\nhttps://github.com/InvoxiPlayGames/condenstation", nullcb, NULL, NULL);
         cellMsgDialogClose(5690);
     }
 }
@@ -395,6 +401,9 @@ void apply_steamclient_patches()
     if (SteamMatchmaking != NULL) {
         ISteamMatchmaking_t *mm = SteamMatchmaking();
         PS3_Write32(&(mm->vt->RequestLobbyList), (uint32_t)ISteamMatchmaking_RequestLobbyList_Hook);
+        if (*(uint32_t *)(&(mm->vt->RequestLobbyList)) != (uint32_t)ISteamMatchmaking_RequestLobbyList_Hook) {
+            memwrite_failed = true;
+        }
     }
 
     // load our config file
@@ -465,6 +474,9 @@ void apply_steamclient_patches()
         _sys_printf("CUser::LogOn vtable entry = %08x\n", cuserLogon);
         CUser_LogOn = (CUser_LogOn_t)*(uint32_t *)cuserLogon; // :(
         PS3_Write32(cuserLogon, (uint32_t)CUser_LogOn_Hook);
+        if (*(uint32_t *)cuserLogon != (uint32_t)CUser_LogOn_Hook) {
+            memwrite_failed = true;
+        }
     }
 
     sys_ppu_thread_t cmrequest_thread;

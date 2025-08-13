@@ -80,7 +80,7 @@ typedef enum _debugcheck_result
 // CEX/HEN consoles will use ps3mapi_set_process_mem
 char PS3_MemoryWriteCheck()
 {
-    uint8_t elf_header[4];
+    uint8_t elf_header[4] = {0};
     static uint8_t expected[4] = {0x7F, 'E', 'L', 'F'};
 
     pid = sys_process_getpid();
@@ -108,17 +108,21 @@ void PS3_Write32(uint32_t address, uint32_t value)
     PS3_Code[PS3_CodeWrites].address = address;
     PS3_Code[PS3_CodeWrites].value = value;
     PS3_CodeWrites++;
+#ifndef RB3E_DISABLE_PS3DEX
     if (!should_use_mapi)
         sys_dbg_write_process_memory(address, &value_stack, 4);
     else
+#endif
         ps3mapi_set_process_mem(address, &value_stack, 4);
 }
 
 void PS3_WriteMemory(uint32_t address, void *data, size_t size)
 {
+#ifndef RB3E_DISABLE_PS3DEX
     if (!should_use_mapi)
         sys_dbg_write_process_memory(address, data, size);
     else
+#endif
         ps3mapi_set_process_mem(address, data, size);
 }
 
