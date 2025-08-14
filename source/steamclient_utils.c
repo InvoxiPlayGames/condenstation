@@ -2,12 +2,10 @@
 #include <sys/prx.h>
 #include <string.h>
 
+#include "condenstation_logger.h"
 #include "memmem.h"
 #include "ps3_utilities.h"
 #include "steamclient_protobuf_vtable.h"
-
-extern int _sys_printf(char *fmt, ...);
-extern int _sys_sprintf(char *buf, char *fmt, ...);
 
 typedef struct _seg_info {
     uint32_t addr;
@@ -46,8 +44,8 @@ void SCUtils_Init()
     steamclient_seg[0].length = (uint32_t)modInfo.segments[0].memsz;
     steamclient_seg[1].addr = (uint32_t)modInfo.segments[1].base;
     steamclient_seg[1].length = (uint32_t)modInfo.segments[1].memsz;
-    _sys_printf("steamclient_ps3(0): 0x%08x\n", steamclient_seg[0].addr);
-    _sys_printf("steamclient_ps3(1): 0x%08x\n", steamclient_seg[1].addr);
+    cdst_log("steamclient_ps3(0): 0x%08x\n", steamclient_seg[0].addr);
+    cdst_log("steamclient_ps3(1): 0x%08x\n", steamclient_seg[1].addr);
 }
 
 // not a steamclient thing but who's counting?
@@ -109,7 +107,7 @@ void *SCUtils_LookupNID(uint32_t nid)
         uint32_t *addtable = (uint32_t *)libent[ent].addtable;
 
         for (int i = 0; i < num_nids; i++) {
-            //_sys_printf("NID %08x = %08x\n", nidtable[i], addtable[i]);
+            //cdst_log("NID %08x = %08x\n", nidtable[i], addtable[i]);
             if (nidtable[i] == nid)
                 found_nid_add = addtable[i];
         }
@@ -153,7 +151,7 @@ void *SCUtils_LookupSteamAPINID(uint32_t nid)
         uint32_t *addtable = (uint32_t *)libent[ent].addtable;
 
         for (int i = 0; i < num_nids; i++) {
-            //_sys_printf("NID %08x = %08x\n", nidtable[i], addtable[i]);
+            //cdst_log("NID %08x = %08x\n", nidtable[i], addtable[i]);
             if (nidtable[i] == nid)
                 found_nid_add = addtable[i];
         }
@@ -167,9 +165,8 @@ void SCUtils_ReplaceString(const char *source, const char *destination)
     int dstlen = strlen(destination) + 1;
     void *ptr = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, source, srclen);
     if (ptr != NULL) {
-        _sys_printf("patching \"%s\" @ %p to \"%s\"\n", source, ptr, destination);
+        cdst_log("patching \"%s\" @ %p to \"%s\"\n", source, ptr, destination);
         PS3_WriteMemory((uint32_t)ptr, destination, dstlen);
-        _sys_printf("\"%s\"\n", (char *)ptr);
     }
 }
 
@@ -183,10 +180,10 @@ sc_protobuf_vtable_t *SCUtils_GetProtobufVtable(const char *protobuf_name)
     proto_name_buffer[1 + strlen(protobuf_name)] = 0;
     void *proto_string = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, proto_name_buffer, strlen(protobuf_name) + 2);
     if (proto_string == NULL) {
-        _sys_printf("failed to find proto string '%s'\n", protobuf_name);
+        cdst_log("failed to find proto string '%s'\n", protobuf_name);
         return NULL;
     }
-    _sys_printf("found proto string at %p + 1\n", proto_string);
+    cdst_log("found proto string at %p + 1\n", proto_string);
     uint32_t proto_string_addr = (uint32_t)proto_string + 1; // increment by 1 since we found a null byte before
 
     // build the part of the GetTypeName instruction that references this string and scans for it
@@ -199,7 +196,7 @@ sc_protobuf_vtable_t *SCUtils_GetProtobufVtable(const char *protobuf_name)
         get_type_name_instrs[1] += 1;
     void *get_type_name_midfunc = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, get_type_name_instrs, sizeof(get_type_name_instrs));
     if (get_type_name_midfunc == NULL) {
-        _sys_printf("failed to find type name midfunc\n");
+        cdst_log("failed to find type name midfunc\n");
         return NULL;
     }
     uint32_t get_type_name_addr = (uint32_t)get_type_name_midfunc - 8;
@@ -208,7 +205,7 @@ sc_protobuf_vtable_t *SCUtils_GetProtobufVtable(const char *protobuf_name)
     uint32_t get_type_name_toc_entry[1] = { get_type_name_addr };
     void *get_type_name_toc = own_memmem((void *)steamclient_seg[1].addr, steamclient_seg[1].length, get_type_name_toc_entry, sizeof(get_type_name_toc_entry));
     if (get_type_name_toc == NULL) {
-        _sys_printf("failed to find type name toc entry\n");
+        cdst_log("failed to find type name toc entry\n");
         return NULL;
     }
     // ... then find a reference to that TOC entry in the main steamclient text segment to find the vtable
@@ -216,7 +213,7 @@ sc_protobuf_vtable_t *SCUtils_GetProtobufVtable(const char *protobuf_name)
     uint32_t protobuf_vtable_addrs[1] = { get_type_name_toc_addr };
     void *protobuf_vtable = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, protobuf_vtable_addrs, sizeof(protobuf_vtable_addrs));
     if (protobuf_vtable == NULL) {
-        _sys_printf("failed to find vtable\n");
+        cdst_log("failed to find vtable\n");
         return NULL;
     }
 
@@ -238,13 +235,12 @@ uint32_t SCUtils_GetFirstBranchTargetAfterInstruction(uint32_t start_address, ui
         uint32_t current_insr = func_to_scan[i];
         if (waiting_for_instruction) {
             if (current_insr == instruction) {
-                _sys_printf("hit instruction we were trying to check for\n");
+                cdst_log("hit instruction we were trying to check for\n");
                 waiting_for_instruction = false;
             }
         } else {
             // check if it's a linked branch
             if ((current_insr >> 26) == 18 && (current_insr & 0x48000001) == 0x48000001) {
-                _sys_printf("hit bl %08x\n", current_insr);
                 branch_instruction = current_insr;
                 instruction_address = (uint32_t)(func_to_scan + i);
                 break;
@@ -255,7 +251,7 @@ uint32_t SCUtils_GetFirstBranchTargetAfterInstruction(uint32_t start_address, ui
     // nope out if we don't have an instruction
     if (branch_instruction == 0)
     {
-        _sys_printf("failed to find branch instruction (e%i) after %i\n", waiting_for_instruction, scan_length);
+        cdst_log("failed to find branch instruction (e%i) after %i\n", waiting_for_instruction, scan_length);
         return 0;
     }
 
@@ -274,7 +270,7 @@ uint32_t SCUtils_FindCCMInterfaceConnect()
     const char *psn_string = "User is on PSN (%s), now connecting to Steam";
     void *psn_string_ptr = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, psn_string, strlen(psn_string));
     if (psn_string_ptr == NULL) {
-        _sys_printf("failed to find psn string\n");
+        cdst_log("failed to find psn string\n");
         return 0;
     }
     uint32_t psn_string_addr = (uint32_t)psn_string_ptr;
@@ -289,7 +285,7 @@ uint32_t SCUtils_FindCCMInterfaceConnect()
         on_psn_notif_instrs[0] += 1;
     void *on_psn_notif_midfunc = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, on_psn_notif_instrs, sizeof(on_psn_notif_instrs));
     if (on_psn_notif_midfunc == NULL) {
-        _sys_printf("failed to find psn notif midfunc\n");
+        cdst_log("failed to find psn notif midfunc\n");
         return NULL;
     }
     uint32_t on_psn_notif_addr = (uint32_t)on_psn_notif_midfunc;
@@ -312,7 +308,7 @@ uint32_t SCUtils_FindCSteamEngineInitCDNCache()
     };
     void *init_cdn_cache_midfunc = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, init_cdn_cache_instrs, sizeof(init_cdn_cache_instrs));
     if (init_cdn_cache_midfunc == NULL) {
-        _sys_printf("can't find init cdn cache midfunc\n");
+        cdst_log("can't find init cdn cache midfunc\n");
         return 0;
     }
     uint32_t *init_cdn_cache_midfunc_arr = (uint32_t *)init_cdn_cache_midfunc;
@@ -322,7 +318,7 @@ uint32_t SCUtils_FindCSteamEngineInitCDNCache()
         if (init_cdn_cache_midfunc_arr[-i] == 0xf821fd81)
             return (uint32_t)&(init_cdn_cache_midfunc_arr[-i]);
     }
-    _sys_printf("failed to find start of init cdn cache\n");
+    cdst_log("failed to find start of init cdn cache\n");
     return 0;
 }
 
@@ -363,7 +359,7 @@ uint32_t SCUtils_FindSteamEngine()
     };
     void *write_to_disk_midfunc = own_memmem((void *)steamclient_seg[0].addr, steamclient_seg[0].length, write_to_disk_instrs, sizeof(write_to_disk_instrs));
     if (write_to_disk_midfunc == NULL) {
-        _sys_printf("can't find write to disk midfunc");
+        cdst_log("can't find write to disk midfunc");
         return 0;
     }
     uint32_t *write_to_disk_midfunc_arr = (uint32_t *)write_to_disk_midfunc;
@@ -375,7 +371,7 @@ uint32_t SCUtils_FindSteamEngine()
             break;
     }
     if (i >= 29) {
-        _sys_printf("can't find rldicl after getconnecteduniverse\n");
+        cdst_log("can't find rldicl after getconnecteduniverse\n");
         return 0;
     }
     // then go back to before that call to find where r3 gets set

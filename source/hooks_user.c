@@ -10,8 +10,6 @@
 
 ISteamUser_t *steamUser = NULL;
 
-extern int _sys_printf(char *fmt, ...);
-
 void ApplyUserHooks(ISteamUser_t *su)
 {
     if (su != NULL) {

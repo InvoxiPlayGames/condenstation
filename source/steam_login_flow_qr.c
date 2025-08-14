@@ -4,8 +4,11 @@
 #include <stdio.h>
 
 #include <sysutil/sysutil_msgdialog.h>
+#include <sysutil/sysutil_common.h>
+#include <sysutil/sysutil_sysparam.h>
 #include <cell/cell_fs.h>
 
+#include "condenstation_logger.h"
 #include "condenstation_config.h"
 #include "cellHttpHelper.h"
 #include "SteamAuthentication.h"
@@ -49,7 +52,7 @@ void qr_code_auth_thread() {
         "Connecting to Steam, please wait...", blankcb_formsgbox, NULL, NULL);
 
     r = condenstation_init_cellHttp();
-    _sys_printf("condenstation_init_cellHttp = %i\n", r);
+    cdst_log("condenstation_init_cellHttp = %i\n", r);
 
     uint8_t msg_buffer[0x400];
     size_t msg_size = 0;
@@ -70,10 +73,14 @@ void qr_code_auth_thread() {
         .allocator_data = &allocdata
     };
 
+    char steam_device_friendly_name[162];
+    char ps3_name[128] = "PS3";
+    cellSysutilGetSystemParamString(CELL_SYSUTIL_SYSTEMPARAM_ID_NICKNAME, ps3_name, sizeof(ps3_name));
+    snprintf(steam_device_friendly_name, sizeof(steam_device_friendly_name), "condenstation (PS3): %s", ps3_name);
+
     CAuthenticationDeviceDetails details;
     cauthentication__device_details__init(&details);
-    // TODO: the device friendly name should use the PS3's name
-    details.device_friendly_name = "condenstation on PS3";
+    details.device_friendly_name = steam_device_friendly_name;
     details.has_os_type = true;
     details.os_type = 20; // Windows 11 - for PS3, it's -300.
     details.has_platform_type = true;
@@ -81,14 +88,14 @@ void qr_code_auth_thread() {
     
     CAuthenticationBeginAuthSessionViaQRRequest req;
     cauthentication__begin_auth_session_via_qr__request__init(&req);
-    req.device_friendly_name = "condenstation on PS3";
+    req.device_friendly_name = steam_device_friendly_name;
     req.has_platform_type = true;
     req.platform_type = EAUTH_TOKEN_PLATFORM_TYPE__k_EAuthTokenPlatformType_SteamClient;
     req.website_id = "Client";
     req.device_details = &details;
 
     msg_size = cauthentication__begin_auth_session_via_qr__request__get_packed_size(&req);
-    _sys_printf("msg_size = %i\n", msg_size);
+    cdst_log("msg_size = %i\n", msg_size);
 
     cauthentication__begin_auth_session_via_qr__request__pack(&req, msg_buffer);
 
@@ -96,29 +103,29 @@ void qr_code_auth_thread() {
     SteamAuthenticationRPC(STEAMAUTH_POST, "BeginAuthSessionViaQR", 1, msg_buffer, msg_size, out_buffer, &out_size);
     // TODO(Emma): handle request failure
     
-    _sys_printf("out_size = %i\n", out_size);
+    cdst_log("out_size = %i\n", out_size);
     hexdump(out_buffer, out_size);
 
     CAuthenticationBeginAuthSessionViaQRResponse *resp = 
         cauthentication__begin_auth_session_via_qr__response__unpack(&shitalloc, out_size, out_buffer);
 
     if (resp->has_client_id)
-        _sys_printf("client id = %llu\n", resp->client_id);
+        cdst_log("client id = %llu\n", resp->client_id);
     if (resp->challenge_url != NULL) {
-        _sys_printf("challenge url = %s\n", resp->challenge_url);
+        cdst_log("challenge url = %s\n", resp->challenge_url);
         QRoverlay_start_displaying_qr(resp->challenge_url);
     }
     if (resp->has_request_id) {
-        _sys_printf("request id = ");
+        cdst_log("request id = ");
         hexdump(resp->request_id.data, resp->request_id.len);
     }
     if (resp->has_interval)
-        _sys_printf("interval = %.2f\n", resp->interval);
+        cdst_log("interval = %.2f\n", resp->interval);
     if (resp->has_version)
-        _sys_printf("version = %i\n", resp->version);
+        cdst_log("version = %i\n", resp->version);
     if (resp->n_allowed_confirmations > 0) {
         for (int i = 0; i < resp->n_allowed_confirmations; i++) {
-            _sys_printf("allowed confirmation [%i] type = %i\n", i, resp->allowed_confirmations[i]->confirmation_type);
+            cdst_log("allowed confirmation [%i] type = %i\n", i, resp->allowed_confirmations[i]->confirmation_type);
         }
     }
 
@@ -151,7 +158,7 @@ void qr_code_auth_thread() {
         pollreq.has_request_id = true;
 
         msg_size = cauthentication__poll_auth_session_status__request__get_packed_size(&pollreq);
-        _sys_printf("msg_size = %i\n", msg_size);
+        cdst_log("msg_size = %i\n", msg_size);
 
         msg_size = cauthentication__poll_auth_session_status__request__pack(&pollreq, msg_buffer);
         // if the buffer has a trailing zero then get rid of it
@@ -162,22 +169,22 @@ void qr_code_auth_thread() {
         SteamAuthenticationRPC(STEAMAUTH_POST, "PollAuthSessionStatus", 1, msg_buffer, msg_size, out_buffer, &out_size);
         // TODO(Emma): handle request failure
 
-        _sys_printf("out_size = %i\n", out_size);
+        cdst_log("out_size = %i\n", out_size);
         //hexdump(out_buffer, out_size);
 
         CAuthenticationPollAuthSessionStatusResponse *pollresp = 
             cauthentication__poll_auth_session_status__response__unpack(&shitalloc, out_size, out_buffer);
         
         if (pollresp->has_new_client_id) {
-            _sys_printf("new client id: %llu\n", pollresp->new_client_id);
+            cdst_log("new client id: %llu\n", pollresp->new_client_id);
             current_client_id = pollresp->new_client_id;
         }
         if (pollresp->new_challenge_url != NULL) {
-            _sys_printf("new challenge url: %s\n", pollresp->new_challenge_url);
+            cdst_log("new challenge url: %s\n", pollresp->new_challenge_url);
             QRoverlay_start_displaying_qr(pollresp->new_challenge_url);
         }
         if (pollresp->account_name != NULL && pollresp->access_token != NULL) {
-            _sys_printf("we are LOGGED IN CHAT!!\n");
+            cdst_log("we are LOGGED IN CHAT!!\n");
             HasConfigLoaded = true;
             strncpy(SteamAccountName, pollresp->account_name, sizeof(SteamAccountName));
             strncpy(SteamAccessToken, pollresp->refresh_token, sizeof(SteamAccessToken));
@@ -192,7 +199,7 @@ void qr_code_auth_thread() {
             auth_session_running = false;
     }
     if (!auth_session_success) {
-        _sys_printf("auth session failed\n");
+        cdst_log("auth session failed\n");
     }
     QRoverlay_stop_displaying_qr();
 }

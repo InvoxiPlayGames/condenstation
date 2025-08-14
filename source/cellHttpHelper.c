@@ -6,15 +6,14 @@
 #include <cell/sysmodule.h>
 #include <netex/net.h>
 
-extern int _sys_printf(char *fmt, ...);
-extern int _sys_sprintf(char *buf, char *fmt, ...);
+#include "condenstation_logger.h"
 
 static uint8_t cell_http_memory_pool[256 * 0x400]; // 256KB
 static uint8_t cell_ssl_memory_pool[256 * 0x400]; // 256KB
 
 static int ssl_callback(uint32_t verifyErr, const CellSslCert *sslCerts, int certNum, const char *hostname, CellHttpSslId id, void *userArg)
 {
-    _sys_printf("ssl_callback verifyErr = %08x\n", verifyErr);
+    cdst_log("ssl_callback verifyErr = %08x\n", verifyErr);
     return verifyErr;
 }
 
@@ -59,20 +58,20 @@ int condenstation_init_cellHttp()
     // initialise the HTTP library if it hasn't been done already
     r = cellHttpInit(cell_http_memory_pool, sizeof(cell_http_memory_pool));
     if (r < 0 && r != CELL_HTTP_ERROR_ALREADY_INITIALIZED) {
-        _sys_printf("cellHttpInit failed 0x%08x\n", (uint32_t)r);
+        cdst_log("cellHttpInit failed 0x%08x\n", (uint32_t)r);
         return r;
     }
     if (r == CELL_HTTP_ERROR_ALREADY_INITIALIZED)
-        _sys_printf("cellHttp already initialised. this is good!\n");
+        cdst_log("cellHttp already initialised. this is good!\n");
     
     // initialise the SSL library if it hasn't been done already
     r = cellSslInit(cell_ssl_memory_pool, sizeof(cell_ssl_memory_pool));
     if (r < 0 && r != CELL_SSL_ERROR_ALREADY_INITIALIZED) {
-        _sys_printf("cellSslInit failed 0x%08x\n", (uint32_t)r);
+        cdst_log("cellSslInit failed 0x%08x\n", (uint32_t)r);
         return r;
     }
     if (r == CELL_SSL_ERROR_ALREADY_INITIALIZED)
-        _sys_printf("cellSsl already initialised. this is good!\n");
+        cdst_log("cellSsl already initialised. this is good!\n");
 
     // initialise HTTPS with the Valve cert
     CellHttpsData cer = {
@@ -81,14 +80,14 @@ int condenstation_init_cellHttp()
     };
     r = cellHttpsInit(1, &cer);
     if (r < 0) {
-        _sys_printf("cellHttpsInit failed 0x%08x\n", (uint32_t)r);
+        cdst_log("cellHttpsInit failed 0x%08x\n", (uint32_t)r);
         return r;
     }
 
     // create our HTTP client
     r = cellHttpCreateClient(&current_cellHttp_client);
     if (r < 0) {
-        _sys_printf("cellHttpCreateClient failed 0x%08x\n", (uint32_t)r);
+        cdst_log("cellHttpCreateClient failed 0x%08x\n", (uint32_t)r);
         return r;
     }
     cellHttpClientSetVersion(current_cellHttp_client, 1, 1);

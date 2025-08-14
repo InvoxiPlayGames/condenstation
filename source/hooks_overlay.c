@@ -9,10 +9,9 @@
 #include "ISteamPS3OverlayRender_c.h"
 #include "libqrencode_qrencode.h"
 #include "tpng.h"
+#include "condenstation_logger.h"
 
 #include "generated/condenstation_qr_border.h"
-
-extern int _sys_printf(char *fmt, ...);
 
 uint8_t qrcodetexture[40000];
 uint32_t qrcodewidth = 0;
@@ -37,8 +36,8 @@ void QRcodeToRGBA(QRcode *code, uint8_t *out_texture, int32_t *out_texture_size)
             }
         }
     }
-    _sys_printf("qroffset = %i\n", qroffset);
-    _sys_printf("texoffset = %i\n", texoffset);
+    cdst_log("qroffset = %i\n", qroffset);
+    cdst_log("texoffset = %i\n", texoffset);
 }
 
 uint8_t whitetexture[4] = {0xff, 0xff, 0xff, 0xff};
@@ -55,13 +54,13 @@ int qrBorderHeight = 0;
 ISteamPS3OverlayRender_BHostInitialise_t ISteamPS3OverlayRender_BHostInitialise;
 bool ISteamPS3OverlayRender_BHostInitialise_Hook(void *thisobj, uint32_t unScreenWidth, uint32_t unScreenHeight, uint32_t unRefreshRate, void *pRenderHost, void *cellFontLib)
 {
-    _sys_printf("ISteamPS3OverlayRender::BHostInitialise\n");
-    _sys_printf("  SteamPS3OverlayRender: %p\n", thisobj);
-    _sys_printf("  unScreenWidth: %i\n", unScreenWidth);
-    _sys_printf("  unScreenHeight: %i\n", unScreenHeight);
-    _sys_printf("  unRefreshRate: %i\n", unRefreshRate);
-    _sys_printf("  pRenderHost: %p\n", pRenderHost);
-    _sys_printf("  cellFontLib: %p\n", cellFontLib);
+    cdst_log("ISteamPS3OverlayRender::BHostInitialise\n");
+    cdst_log("  SteamPS3OverlayRender: %p\n", thisobj);
+    cdst_log("  unScreenWidth: %i\n", unScreenWidth);
+    cdst_log("  unScreenHeight: %i\n", unScreenHeight);
+    cdst_log("  unRefreshRate: %i\n", unRefreshRate);
+    cdst_log("  pRenderHost: %p\n", pRenderHost);
+    cdst_log("  cellFontLib: %p\n", cellFontLib);
 
     screenWidth = unScreenWidth;
     screenHeight = unScreenHeight;
@@ -120,28 +119,28 @@ void QRoverlay_start_displaying_qr(const char *url)
     // render out the qr code
     QRcode *code = QRcode_encodeString(url, 0, QR_ECLEVEL_Q, QR_MODE_8, 1);
     if (code != NULL) {
-        _sys_printf("qrcode rendered %p\n", code);
-        _sys_printf("qrcode is %ix%i\n", code->width, code->width);
-        _sys_printf("qrcode is %i bytes\n", code->width * code->width);
-        _sys_printf("qrcode texture size must be %i\n", (code->width * code->width) * 4);
+        cdst_log("qrcode rendered %p\n", code);
+        cdst_log("qrcode is %ix%i\n", code->width, code->width);
+        cdst_log("qrcode is %i bytes\n", code->width * code->width);
+        cdst_log("qrcode texture size must be %i\n", (code->width * code->width) * 4);
         int32_t out_tex_size = 0;
         QRcodeToRGBA(code, qrcodetexture, &out_tex_size);
         qrcodewidth = code->width;
-        _sys_printf("out_tex_size = %i\n", out_tex_size);
+        cdst_log("out_tex_size = %i\n", out_tex_size);
         renderHost->vt->LoadOrUpdateTexture(renderHost, 3002, true, 0, 0, qrcodewidth, qrcodewidth, out_tex_size, qrcodetexture);
         QRcode_free(code);
     } else {
-        _sys_printf("failed to render qr code");
+        cdst_log("failed to render qr code");
         return;
     }
     // render out the border
     uint8_t *png_data = tpng_get_rgba(condenstation_qr_border_png, condenstation_qr_border_png_len, &qrBorderWidth, &qrBorderHeight);
     if (png_data != NULL) {
-        _sys_printf("loaded RBGA data of %ix%i\n", qrBorderWidth, qrBorderHeight);
+        cdst_log("loaded RBGA data of %ix%i\n", qrBorderWidth, qrBorderHeight);
         renderHost->vt->LoadOrUpdateTexture(renderHost, 3001, true, 0, 0, qrBorderWidth, qrBorderHeight, qrBorderWidth * qrBorderHeight * 4, png_data);
         free(png_data);
     } else {
-        _sys_printf("failed to render png data");
+        cdst_log("failed to render png data");
         return;
     }
     // set the value saying we're displaying a qr

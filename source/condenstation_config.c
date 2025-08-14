@@ -11,8 +11,7 @@
 #include <ppcasm.h>
 
 #include "aes.h"
-
-extern int _sys_printf(char *fmt, ...);
+#include "condenstation_logger.h"
 
 // loaded config globals
 bool HasConfigLoaded = false;
@@ -126,7 +125,7 @@ static bool decrypt_config_v1(cst_encrypted_config_v1_t *input, cst_config_v1_t 
 
     // check if the info hash in the encrypted config matches
     if (input->cih != cinfohash) {
-        _sys_printf("console info hash in config (%08x) doesn't match current console (%08x)\n", input->cih, cinfohash);
+        cdst_log("console info hash in config (%08x) doesn't match current console (%08x)\n", input->cih, cinfohash);
         memset(&ctx, 0x41, sizeof(ctx)); // clear the context from RAM
         return false;
     }
@@ -137,13 +136,13 @@ static bool decrypt_config_v1(cst_encrypted_config_v1_t *input, cst_config_v1_t 
 
     // verify the decryption was correct
     if (output->magic != CST_CONFIG_DEC_HDR || output->version != 1) {
-        _sys_printf("config didn't decrypt correctly\n");
+        cdst_log("config didn't decrypt correctly\n");
         return false;
     }
     uint32_t crc = 0;
     crc32(output, sizeof(cst_config_v1_t), &crc);
     if (input->crc != crc) {
-        _sys_printf("crc32 in config (%08x) doesn't match (%08x)\n", input->crc, crc);
+        cdst_log("crc32 in config (%08x) doesn't match (%08x)\n", input->crc, crc);
         return false;
     }
 
@@ -161,7 +160,7 @@ bool load_auth_config() {
     CellUserInfoUserStat userst;
     cellUserInfoGetStat(CELL_SYSUTIL_USERID_CURRENT, &userst);
     snprintf(config_filename, sizeof(config_filename), "/dev_hdd0/tmp/condenstation_auth_%08x.bin", userst.id);
-    _sys_printf("checking for config at '%s'...\n", config_filename);
+    cdst_log("checking for config at '%s'...\n", config_filename);
 
     // open and read the file
     int fd = -1;
@@ -181,15 +180,15 @@ bool load_auth_config() {
     // v1 encrypted config
     } else if (*(uint32_t *)configBuffer == CST_CONFIG_ENC_HDR && *(uint32_t *)(configBuffer + 4) == 1) {
         if (!v1_encryption_available()) {
-            _sys_printf("file is encrypted, but we don't have encryption available\n");
+            cdst_log("file is encrypted, but we don't have encryption available\n");
             return false;
         }
         if (!decrypt_config_v1((cst_encrypted_config_v1_t *)configBuffer, &dec_config)) {
-            _sys_printf("config decryption failed\n");
+            cdst_log("config decryption failed\n");
             return false;
         }
     } else {
-        _sys_printf("unknown config file\n");
+        cdst_log("unknown config file\n");
         return false;
     }
 
@@ -210,7 +209,7 @@ void save_auth_config() {
     CellUserInfoUserStat userst;
     cellUserInfoGetStat(CELL_SYSUTIL_USERID_CURRENT, &userst);
     snprintf(config_filename, sizeof(config_filename), "/dev_hdd0/tmp/condenstation_auth_%08x.bin", userst.id);
-    _sys_printf("saving config to '%s'...\n", config_filename);
+    cdst_log("saving config to '%s'...\n", config_filename);
 
     // prepare the decrypted config buffer
     cst_config_v1_t dec_config;
@@ -224,7 +223,7 @@ void save_auth_config() {
     int fd;
     CellFsErrno r = cellFsOpen(config_filename, CELL_FS_O_CREAT | CELL_FS_O_TRUNC | CELL_FS_O_WRONLY, &fd, NULL, 0);
     if (r != CELL_FS_SUCCEEDED) {
-        _sys_printf("file creation failed\n", config_filename);
+        cdst_log("file creation failed\n", config_filename);
         return;
     }
     uint64_t bytesWrite = 0;
@@ -233,10 +232,10 @@ void save_auth_config() {
     if (v1_encryption_available()) {
         cst_encrypted_config_v1_t enc_config;
         encrypt_config_v1(&dec_config, &enc_config);
-        _sys_printf("file is being saved encrypted\n", config_filename);
+        cdst_log("file is being saved encrypted\n", config_filename);
         cellFsWrite(fd, &enc_config, sizeof(enc_config), &bytesWrite);
     } else {
-        _sys_printf("!! FILE IS BEING SAVED DECRYPTED !!\n");
+        cdst_log("!! FILE IS BEING SAVED DECRYPTED !!\n");
         cellFsWrite(fd, &dec_config, sizeof(dec_config), &bytesWrite);
     }
 

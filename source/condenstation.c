@@ -13,6 +13,7 @@
 #include <string.h>
 #include <ppcasm.h>
 
+#include "condenstation_logger.h"
 #include "condenstation_config.h"
 #include "cellHttpHelper.h"
 #include "memmem.h"
@@ -40,18 +41,14 @@
         asm("b ." #x ";");           \
     }
 
-// lv2 printf, regular printf doesn't (..?) work (or needs configuration)
-extern int _sys_printf(char *fmt, ...);
-extern int _sys_sprintf(char *buf, char *fmt, ...);
-
 SYS_MODULE_INFO(condenstation, 0, 1, 0);
 SYS_MODULE_START(_prx_start);
 SYS_MODULE_STOP(_prx_stop);
 
 void hexdump(uint8_t *source, size_t len) {
     for(int i = 0; i < len; i++)
-        _sys_printf("%02x ", source[i]);
-    _sys_printf("\n");
+        cdst_log("%02x ", source[i]);
+    cdst_log("\n");
 }
 
 static uint32_t get_toc_base()
@@ -75,7 +72,7 @@ bool use_v2_cmsgclientlogon = false;
 void fix_up_CMsgClientLogon(CMsgClientLogonAutogen *cmsg)
 {
     CMsgClientLogonAutogenV2 *cmsgv2 = (CMsgClientLogonAutogenV2 *)cmsg;
-    _sys_printf("fix_up_CMsgClientLogon %p\n", cmsg);
+    cdst_log("fix_up_CMsgClientLogon %p\n", cmsg);
 
     // set OS type to Windows 11
     cmsg->client_os_type = 20;
@@ -95,13 +92,13 @@ void fix_up_CMsgClientLogon(CMsgClientLogonAutogen *cmsg)
 
     // if we haven't got one already, set up a username
     if ((cmsg->enabled_fields & 0x10000) == 0) {
-        _sys_printf("adding an account name\n");
+        cdst_log("adding an account name\n");
         std_basic_string_constructor(&username_bs, SteamAccountName);
         if (cmsg->account_name == NULL) {
-            _sys_printf("setting to our username fake string - could crash\n");
+            cdst_log("setting to our username fake string - could crash\n");
             cmsg->account_name = &username_bs;
         } else {
-            _sys_printf("modifying existing basic string\n");
+            cdst_log("modifying existing basic string\n");
             cmsg->account_name->current_size = username_bs.current_size;
             cmsg->account_name->max_size = username_bs.max_size;
             // TODO(Emma): check, does this actually work..?
@@ -124,26 +121,26 @@ ProtobufByteSize_t CMsgClientLogon_ByteSize;
 // we have to add the size of our access token
 int CMsgClientLogon_ByteSize_Hook(void *protobuf)
 {
-    _sys_printf("CMsgClientLogon_ByteSize_Hook\n");
+    cdst_log("CMsgClientLogon_ByteSize_Hook\n");
     CMsgClientLogonAutogen *cmsg = (CMsgClientLogonAutogen *)protobuf;
 
     // make sure the original struct is populated with the right info
     fix_up_CMsgClientLogon(cmsg);
 
     // get the original byte length
-    _sys_printf("calling CMsgClientLogon_ByteSize\n");
+    cdst_log("calling CMsgClientLogon_ByteSize\n");
     int orig_len = CMsgClientLogon_ByteSize(protobuf);
-    _sys_printf("original length: %i\n", orig_len);
+    cdst_log("original length: %i\n", orig_len);
 
     // add the length for our access_token
     int data_len = strlen(SteamAccessToken);
     int pref_byte_len = 1; // length byte is 1 byte long unless it needs to be a varint
     if (data_len >= 0x80)
         pref_byte_len = CodedOutputStream_VarintSize32Fallback(data_len);
-    _sys_printf("data_len = %i\n", data_len);
-    _sys_printf("pref_byte_len = %i\n", data_len);
+    cdst_log("data_len = %i\n", data_len);
+    cdst_log("pref_byte_len = %i\n", data_len);
     orig_len += (pref_byte_len + data_len + 2);
-    _sys_printf("new length: %i\n", orig_len);
+    cdst_log("new length: %i\n", orig_len);
 
     // update the byte length in the structure (GetCachedSize as well as serializing to array uses it)
     cmsg->length = orig_len;
@@ -156,18 +153,18 @@ ProtobufSerializeWithCachedSizes_t CMsgClientLogon_SerializeWithCachedSizes;
 // we have to add our access token
 void CMsgClientLogon_SerializeWithCachedSizes_Hook(void *protobuf, void *outputCodedStream)
 {
-    _sys_printf("CMsgClientLogon_SerializeWithCachedSizes_Hook\n");
+    cdst_log("CMsgClientLogon_SerializeWithCachedSizes_Hook\n");
     CMsgClientLogonAutogen *cmsg = (CMsgClientLogonAutogen *)protobuf;
 
     // make sure the original struct is populated with the right info
     fix_up_CMsgClientLogon(cmsg);
 
     // serialize the unmodified message to the output buffer
-    _sys_printf("calling CMsgClientLogon_SerializeWithCachedSizes\n");
+    cdst_log("calling CMsgClientLogon_SerializeWithCachedSizes\n");
     CMsgClientLogon_SerializeWithCachedSizes(protobuf, outputCodedStream);
 
     // serialize our access token into the output buffer
-    _sys_printf("serializing access token\n");
+    cdst_log("serializing access token\n");
     std_basic_string access_token;
     std_basic_string_constructor(&access_token, SteamAccessToken);
     WireFormatLite_WriteString(108, &access_token, outputCodedStream);
@@ -178,12 +175,12 @@ ProtobufMergePartialFromCodedStream_t CMsgClientLogonResponse_MergePartialFromCo
 // hook when the client tries to deserialize CMsgClientLogonResponse so we know the result and can change it where necessary
 int CMsgClientLogonResponse_MergePartialFromCodedStream_Hook(void *protobuf, void *inputCodedStream)
 {
-    _sys_printf("CMsgClientLogonResponse_MergePartialFromCodedStream_Hook\n");
+    cdst_log("CMsgClientLogonResponse_MergePartialFromCodedStream_Hook\n");
     int r = CMsgClientLogonResponse_MergePartialFromCodedStream(protobuf, inputCodedStream);
 
     CMsgClientLogonResponseAutogen *cmsg = (CMsgClientLogonResponseAutogen *)protobuf;
 
-    _sys_printf("logon EResult: %i\n", cmsg->eresult);
+    cdst_log("logon EResult: %i\n", cmsg->eresult);
 
     // uncomment to get the "link your psn to steam" screen
     //if (cmsg->eresult != 1)
@@ -210,7 +207,7 @@ int CUtlVector_AddMultipleToTail_netadr(void *utlvector, int count, netadr_t *ob
 int CUtlVector_AddMultipleToTail_netadr_hook(void *utlvector, int count, netadr_t *objects)
 {
     // return a hardcoded netadr
-    _sys_printf("connecting to CM %08x:%i\n", netadr_to_use.ip, netadr_to_use.port);
+    cdst_log("connecting to CM %08x:%i\n", netadr_to_use.ip, netadr_to_use.port);
     return CUtlVector_AddMultipleToTail_netadr(utlvector, 1, &netadr_to_use);
 }
 
@@ -290,7 +287,7 @@ void set_fatal_error(const char *text) {
 void nullcb(int a, void *b) {}
 
 void CUser_LogOn_Hook(void *cuser, bool bInteractive, uint64_t steamid) {
-    _sys_printf("CUser::LogOn(%p, %i, %p) called!\n", cuser, bInteractive, steamid);
+    cdst_log("CUser::LogOn(%p, %i, %p) called!\n", cuser, bInteractive, steamid);
     stored_cuser = cuser;
     stored_steamid = steamid;
     uint8_t *cuser_raw = (uint8_t *)cuser;
@@ -341,7 +338,7 @@ void CUser_LogOn_Hook(void *cuser, bool bInteractive, uint64_t steamid) {
 void get_cm_thread();
 
 int ISteamMatchmaking_RequestLobbyList_Hook(void *thisobj) {
-    _sys_printf("Preventing call to RequestLobbyList.\n");
+    cdst_log("Preventing call to RequestLobbyList.\n");
     cellMsgDialogOpen2(CELL_MSGDIALOG_TYPE_BUTTON_TYPE_OK | CELL_MSGDIALOG_TYPE_SE_TYPE_ERROR,
         "Sorry, you can't search for random players with condenstation.", nullcb, NULL, NULL);
     return -1;
@@ -377,16 +374,16 @@ void apply_steamclient_patches()
         steamPS3Params = steamclient_GetSteamPS3Params();
         use_v2_cmsgclientlogon = (steamPS3Params->m_unVersion == STEAM_PS3_CSGO_PARAMS_VER);
         if (steamPS3Params->m_unVersion == STEAM_PS3_PORTAL2_PARAMS_VER)
-            _sys_printf("portal 2!\n");
+            cdst_log("portal 2!\n");
         else if (steamPS3Params->m_unVersion == STEAM_PS3_CSGO_PARAMS_VER)
-            _sys_printf("csgo!\n");
+            cdst_log("csgo!\n");
         else
-            _sys_printf("what?\n");
+            cdst_log("what?\n");
         
-        _sys_printf("m_nAppId = %i\n", steamPS3Params->m_nAppId);
-        _sys_printf("m_rgchInstallationPath = %s\n", steamPS3Params->m_rgchInstallationPath);
-        _sys_printf("m_rgchGameData = %s\n", steamPS3Params->m_rgchGameData);
-        _sys_printf("m_rgchSystemCache = %s\n", steamPS3Params->m_rgchSystemCache);
+        cdst_log("m_nAppId = %i\n", steamPS3Params->m_nAppId);
+        cdst_log("m_rgchInstallationPath = %s\n", steamPS3Params->m_rgchInstallationPath);
+        cdst_log("m_rgchGameData = %s\n", steamPS3Params->m_rgchGameData);
+        cdst_log("m_rgchSystemCache = %s\n", steamPS3Params->m_rgchSystemCache);
     }
 
     SteamAPI_ClassAccessor_t SteamPS3OverlayRender = SCUtils_LookupSteamAPINID(NID_SteamPS3OverlayRender);
@@ -409,29 +406,29 @@ void apply_steamclient_patches()
     // load our config file
     load_auth_config();
     if (HasConfigLoaded) {
-        _sys_printf("Loaded config, account: '%s'\n", SteamAccountName);
+        cdst_log("Loaded config, account: '%s'\n", SteamAccountName);
     }
 
     // get the vtables of the protobuf objects we want to modify
     sc_protobuf_vtable_t *cmsgclientlogon_vt = SCUtils_GetProtobufVtable("CMsgClientLogon");
     sc_protobuf_vtable_t *cmsgclientlogonresponse_vt = SCUtils_GetProtobufVtable("CMsgClientLogonResponse");
-    _sys_printf("CMsgClientLogon: %p\n", cmsgclientlogon_vt);
-    _sys_printf("CMsgClientLogonResponse: %p\n", cmsgclientlogonresponse_vt);
+    cdst_log("CMsgClientLogon: %p\n", cmsgclientlogon_vt);
+    cdst_log("CMsgClientLogonResponse: %p\n", cmsgclientlogonresponse_vt);
 
     // keep a copy of the steamclient toc to make patches and jumps a lot more seamless
     uint32_t condenstation_toc = get_toc_base() - 0x8000;
     uint32_t steamclient_toc = TOC_PTR(cmsgclientlogon_vt->SerializeWithCachedSizes) - 0x8000; // use the vtable function ptr as a place to get it from
-    _sys_printf("copying steamclient toc from %08x to %08x\n", steamclient_toc, condenstation_toc);
+    cdst_log("copying steamclient toc from %08x to %08x\n", steamclient_toc, condenstation_toc);
     PS3_WriteMemory(condenstation_toc, (void *)steamclient_toc, 0x800);
     PS3_SetPluginTOCBase(get_toc_base());
 
     // find the functions required to hook CM addresses
     uint32_t ccminterfaceconnect = SCUtils_FindCCMInterfaceConnect();
-    _sys_printf("CCMInterface::Connect = %08x\n", ccminterfaceconnect);
+    cdst_log("CCMInterface::Connect = %08x\n", ccminterfaceconnect);
     uint32_t addmultipletotail = SCUtils_GetFirstBranchTargetAfterInstruction(ccminterfaceconnect, 0x7c8407b4, 120);
-    _sys_printf("CUtlVector<>::AddMultipleToTail = %08x\n", addmultipletotail);
+    cdst_log("CUtlVector<>::AddMultipleToTail = %08x\n", addmultipletotail);
     //uint32_t basyncconnect = SCUtils_GetFirstBranchTargetAfterInstruction(ccminterfaceconnect, 0x38e0004b, 150);
-    //_sys_printf("CCMConnection::BAsyncConnect = %08x\n", basyncconnect);
+    //cdst_log("CCMConnection::BAsyncConnect = %08x\n", basyncconnect);
     HookFunction(addmultipletotail, FUNC_PTR(CUtlVector_AddMultipleToTail_netadr), FUNC_PTR(CUtlVector_AddMultipleToTail_netadr_hook));
 
     // find useful protobuf functions that we need
@@ -462,16 +459,16 @@ void apply_steamclient_patches()
 
     // find the global CSteamEngine and CSteamEngine::InitCDNCache, re-init the cache with the new URLs
     uint32_t g_pSteamEngineAddr = SCUtils_FindSteamEngine();
-    _sys_printf("g_pSteamEngineAddr = %08x\n", g_pSteamEngineAddr);
+    cdst_log("g_pSteamEngineAddr = 0x%08x\n", g_pSteamEngineAddr);
     CSteamEngine_InitCDNCache_stub.func = SCUtils_FindCSteamEngineInitCDNCache();
-    _sys_printf("CSteamEngine::InitCDNCache = %08x\n", CSteamEngine_InitCDNCache_stub.func);
+    cdst_log("CSteamEngine::InitCDNCache = 0x%08x\n", CSteamEngine_InitCDNCache_stub.func);
     CSteamEngine_InitCDNCache_stub.toc = steamclient_toc;
     CSteamEngine_InitCDNCache((void *)g_pSteamEngineAddr);
 
     // find and hook CUser::LogOn's vtable entry
     if (!use_v2_cmsgclientlogon) {
         uint32_t cuserLogon = SCUtils_FindCUserLogOn();
-        _sys_printf("CUser::LogOn vtable entry = %08x\n", cuserLogon);
+        cdst_log("CUser::LogOn vtable entry = 0x%08x\n", cuserLogon);
         CUser_LogOn = (CUser_LogOn_t)*(uint32_t *)cuserLogon; // :(
         PS3_Write32(cuserLogon, (uint32_t)CUser_LogOn_Hook);
         if (*(uint32_t *)cuserLogon != (uint32_t)CUser_LogOn_Hook) {
@@ -496,7 +493,10 @@ void *CreateInterface(const char *name, int *returnCode) {
 
 int _prx_start(unsigned int args, unsigned int *argp)
 {
-    _sys_printf("PRX opened!\n");
+    // initialise our logger api
+    condenstation_log_init();
+
+    cdst_log("PRX opened!\n");
 
     // when loaded via the Source engine addons loader, we'll have to provide a CreateInterface function
     if (args >= sizeof(PS3_LoadAppSystemInterface_Parameters_t)) {
@@ -506,7 +506,6 @@ int _prx_start(unsigned int args, unsigned int *argp)
     }
 
     // make sure memory read/write APIs are available and choose whether to use DEX or CEX syscalls
-    // TODO(Emma): add warning if no syscalls available (unlikely but possible)
     PS3_MemoryWriteCheck();
 
     // steamclient_ps3 is always loaded at prx entrypoint when using addons folder on Portal 2
@@ -519,6 +518,6 @@ int _prx_start(unsigned int args, unsigned int *argp)
 int _prx_stop()
 {
     // ideally we would remove all our hooks when the PRX unloads but idc about that rn
-    _sys_printf("PRX is unloading! SteamClient will be unstable!\n");
+    cdst_log("PRX is unloading! SteamClient will be unstable!\n");
     return CELL_OK;
 }

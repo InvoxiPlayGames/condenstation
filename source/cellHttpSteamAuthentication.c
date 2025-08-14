@@ -6,6 +6,7 @@
 #include <cell/sysmodule.h>
 #include <netex/net.h>
 
+#include "condenstation_logger.h"
 #include "cellHttpHelper.h"
 #include "SteamAuthentication.h"
 
@@ -23,26 +24,26 @@ int SteamAuthenticationRPC(int method_type, const char *rpc_name, int rpc_versio
         .port = 443,
         .path = uri_path_buf
     };
-    _sys_printf("built path: https://api.steampowered.com:443/%s\n", uri_path_buf);
+    cdst_log("built path: https://api.steampowered.com:443/%s\n", uri_path_buf);
     // build a request body by base64 encoding the input
     char req_body[2080];
     char req_b64[2048];
     char req_b64uri[2048];
     if (((size_input + 2) / 3 * 4) > sizeof(req_b64)) {
-        _sys_printf("input size too long\n");
+        cdst_log("input size too long\n");
         return -1;
     }
     cellHttpUtilBase64Encoder(req_b64, input, size_input);
     size_t required_uriencode = 0;
     cellHttpUtilFormUrlEncode(req_b64uri, sizeof(req_b64uri), req_b64, strlen(req_b64), &required_uriencode);
     snprintf(req_body, sizeof(req_body), "input_protobuf_encoded=%s", req_b64uri);
-    _sys_printf("built body: %s\n", req_body);
+    cdst_log("built body: %s\n", req_body);
     // append request body to uri for GET requests
     char uri_get_path_buf[512];
     if (method_type == STEAMAUTH_GET) {
         snprintf(uri_get_path_buf, sizeof(uri_get_path_buf), "%s?%s", uri_path_buf, req_body);
         uri.path = uri_get_path_buf;
-        _sys_printf("full GET path: https://api.steampowered.com:443/%s\n", uri_get_path_buf);
+        cdst_log("full GET path: https://api.steampowered.com:443/%s\n", uri_get_path_buf);
     }
     // create a transaction
     CellHttpTransId trans;
@@ -51,10 +52,10 @@ int SteamAuthenticationRPC(int method_type, const char *rpc_name, int rpc_versio
         &uri);
     if (r < 0)
     {
-        _sys_printf("cellHttpCreateTransaction failed %08x\n", (uint32_t)r);
+        cdst_log("cellHttpCreateTransaction failed %08x\n", (uint32_t)r);
         return r;
     }
-    _sys_printf("transaction made\n");
+    cdst_log("transaction made\n");
     // set the headers
     if (method_type == STEAMAUTH_POST) {
         cellHttpRequestSetContentLength(trans, strlen(req_body));
@@ -62,34 +63,34 @@ int SteamAuthenticationRPC(int method_type, const char *rpc_name, int rpc_versio
             .name = "Content-Type",
             .value = "application/x-www-form-urlencoded"
         };
-        _sys_printf("adding header\n");
+        cdst_log("adding header\n");
         cellHttpRequestAddHeader(trans, &contenttype);
     }
     // send the request
-    _sys_printf("sending request\n");
+    cdst_log("sending request\n");
     size_t sent_bytes = 0;
     r = cellHttpSendRequest(trans, req_body, strlen(req_body), &sent_bytes);
     if (r < 0) {
-        _sys_printf("cellHttpSendRequest failed %08x\n", (uint32_t)r);
+        cdst_log("cellHttpSendRequest failed %08x\n", (uint32_t)r);
         return r;
     }
-    _sys_printf("sent request %i bytes\n", sent_bytes);
+    cdst_log("sent request %i bytes\n", sent_bytes);
     // recieve the status code
     int rcode = 0;
     r = cellHttpResponseGetStatusCode(trans, &rcode);
     if (r < 0) {
-        _sys_printf("cellHttpResponseGetStatusCode failed %08x\n", (uint32_t)r);
+        cdst_log("cellHttpResponseGetStatusCode failed %08x\n", (uint32_t)r);
         return r;
     }
-    _sys_printf("server returned HTTP %i\n", rcode);
+    cdst_log("server returned HTTP %i\n", rcode);
     // recieve the response
     uint64_t recv_bytes;
     r = cellHttpResponseGetContentLength(trans, &recv_bytes);
     if (r < 0) {
-        _sys_printf("cellHttpResponseGetContentLength failed %08x\n", (uint32_t)r);
+        cdst_log("cellHttpResponseGetContentLength failed %08x\n", (uint32_t)r);
         return r;
     }
-    _sys_printf("content-length: %llu\n", recv_bytes);
+    cdst_log("content-length: %llu\n", recv_bytes);
     // TODO(Emma): at this point cellHttp has our headers, we can check X-eresult here or something..?
     size_t outbuf_size = *size_output;
     size_t recv_size = 0;
@@ -97,10 +98,10 @@ int SteamAuthenticationRPC(int method_type, const char *rpc_name, int rpc_versio
     while (total_recvd < recv_bytes) {
         r = cellHttpRecvResponse(trans, output + total_recvd, outbuf_size - total_recvd, &recv_size);
         if (r < 0) {
-            _sys_printf("cellHttpRecvResponse failed %08x\n", (uint32_t)r);
+            cdst_log("cellHttpRecvResponse failed %08x\n", (uint32_t)r);
             break;
         }
-        _sys_printf("recieved %i bytes\n", recv_size);
+        cdst_log("recieved %i bytes\n", recv_size);
         total_recvd += recv_size;
     }
     *size_output = total_recvd;
