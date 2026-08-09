@@ -36,7 +36,7 @@ bool ISteamUserStats_GetStatInt_Hook(void *thisobj, const char *pchName, int32 *
 {
     const char *fixedname = FixStatName(pchName);
     bool r = ISteamUserStats_GetStatInt(thisobj, fixedname, pData);
-    printf("ISteamUserStats::GetStat(%p, \"%s\", %p -> %i ) = %s\n", thisobj, pchName, pData, *pData, r ? "true" : "false");
+    printf("ISteamUserStats::GetStat(%p, \"%s\", %p -> %i ) = %s\n", thisobj, fixedname, pData, *pData, r ? "true" : "false");
     return r;
 }
 
@@ -45,7 +45,7 @@ bool ISteamUserStats_GetStatFloat_Hook(void *thisobj, const char *pchName, float
 {
     const char *fixedname = FixStatName(pchName);
     bool r = ISteamUserStats_GetStatFloat(thisobj, fixedname, pData);
-    printf("ISteamUserStats::GetStat(%p, \"%s\", %p -> %f ) = %s\n", thisobj, pchName, pData, *pData, r ? "true" : "false");
+    printf("ISteamUserStats::GetStat(%p, \"%s\", %p -> %f ) = %s\n", thisobj, fixedname, pData, *pData, r ? "true" : "false");
     return r;
 }
 
@@ -54,7 +54,7 @@ bool ISteamUserStats_SetStatInt_Hook(void *thisobj, const char *pchName, int32 p
 {
     const char *fixedname = FixStatName(pchName);
     bool r = ISteamUserStats_SetStatInt(thisobj, fixedname, pData);
-    printf("ISteamUserStats::SetStat(%p, \"%s\", %i ) = %s\n", thisobj, pchName, pData, r ? "true" : "false");
+    printf("ISteamUserStats::SetStat(%p, \"%s\", %i ) = %s\n", thisobj, fixedname, pData, r ? "true" : "false");
     return r;
 }
 
@@ -63,7 +63,7 @@ bool ISteamUserStats_SetStatFloat_Hook(void *thisobj, const char *pchName, float
 {
     const char *fixedname = FixStatName(pchName);
     bool r = ISteamUserStats_SetStatFloat(thisobj, fixedname, pData);
-    printf("ISteamUserStats::SetStat(%p, \"%s\", %f ) = %s\n", thisobj, pchName, pData, r ? "true" : "false");
+    printf("ISteamUserStats::SetStat(%p, \"%s\", %f ) = %s\n", thisobj, fixedname, pData, r ? "true" : "false");
     return r;
 }
 
