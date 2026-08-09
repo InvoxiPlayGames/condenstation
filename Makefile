@@ -23,9 +23,9 @@ BUILD_P := build_ps3
 TOOLPATH_P := $(PS3SDKHOST)/bin
 PPUHOSTPATH_P := $(PS3SDKHOST)/ppu
 PPUTARGETPATH_P := $(PS3SDKTARGET)/ppu
-COMPILER_P := $(PPUHOSTPATH_P)/bin/ppu-lv2-gcc
-MAKESELF_P := $(TOOLPATH_P)/make_fself
-MAKESELFNPDRM_P := $(TOOLPATH_P)/make_fself_npdrm
+COMPILER_P := $(PPUHOSTPATH_P)/bin/ppu-lv2-gcc.exe
+MAKESELF_P := $(TOOLPATH_P)/make_fself.exe
+MAKESELFNPDRM_P := $(TOOLPATH_P)/make_fself_npdrm.exe
 SCETOOL_P := $(SCETOOLPATH)/scetool
 # .o object files for PS3 compilation
 OBJECTS_P := $(subst $(SRC_DIR),$(BUILD_P),$(patsubst %.c,%.c.o,$(SOURCES))) $(subst $(SRC_DIR),$(BUILD_P),$(patsubst %.cpp,%.cpp.o,$(SOURCES_CPP)))
@@ -85,12 +85,12 @@ rpcs3: ps3_f
 $(OUTPUT)/f_$(OUTNAME).sprx: $(BUILD_P)/output.prx
 	@echo "Creating FSPRX..."
 	@mkdir -p $(@D)
-	@$(MAKESELF_P) $^ $@
+	@$(WINDOWS_SHIM) $(MAKESELF_P) $^ $@
 
 $(OUTPUT)/fnp_$(OUTNAME).sprx: $(BUILD_P)/output.prx
 	@echo "Creating NP FSPRX..."
 	@mkdir -p $(@D)
-	@$(MAKESELFNPDRM_P) $^ $@
+	@$(WINDOWS_SHIM) $(MAKESELFNPDRM_P) $^ $@
 
 $(OUTPUT)/$(OUTNAME).sprx: $(BUILD_P)/output.prx
 	@echo "Creating signed SPRX..."
@@ -100,14 +100,14 @@ $(OUTPUT)/$(OUTNAME).sprx: $(BUILD_P)/output.prx
 $(BUILD_P)/output.prx: $(OBJECTS_P)
 	@echo "Linking PRX..."
 	@mkdir -p $(@D)
-	@$(COMPILER_P) $^ $(LFLAGS_P) -o $@
+	@$(WINDOWS_SHIM) $(COMPILER_P) $^ $(LFLAGS_P) -o $@
 
 $(BUILD_P)/%.c.o: $(SRC_DIR)/%.c | scripts
 	@echo $<
 	@mkdir -p $(@D)
-	@$(COMPILER_P) -c $(CFLAGS_P) $< -o $@
+	@$(WINDOWS_SHIM) $(COMPILER_P) -c $(CFLAGS_P) $< -o $@
 
 $(BUILD_P)/%.cpp.o: $(SRC_DIR)/%.cpp | scripts
 	@echo $<
 	@mkdir -p $(@D)
-	@$(COMPILER_P) -c $(CFLAGS_CPP_P) $< -o $@
+	@$(WINDOWS_SHIM) $(COMPILER_P) -c $(CFLAGS_CPP_P) $< -o $@
