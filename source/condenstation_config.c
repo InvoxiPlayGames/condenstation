@@ -149,6 +149,26 @@ static bool decrypt_config_v1(cst_encrypted_config_v1_t *input, cst_config_v1_t 
     return true;
 }
 
+int load_appid_file(const char *folder)
+{
+    // check for an appid file
+    char file_path[512];
+    snprintf(file_path, sizeof(file_path), "%s/steam_appid.txt", folder);
+    int fd = -1;
+    CellFsErrno r = cellFsOpen(file_path, CELL_FS_O_RDONLY, &fd, NULL, 0);
+    if (r != CELL_FS_SUCCEEDED)
+        return 0; // probably not found
+
+    // load the appid in
+    char file_buf[64] = {'0', 0};
+    uint64_t bytesRead = 0;
+    cellFsRead(fd, file_buf, sizeof(file_buf), &bytesRead);
+    cellFsClose(fd);
+    
+    // convert to a string
+    return atoi(file_buf);
+}
+
 bool load_auth_config() {
     HasConfigLoaded = false;
     memset(SteamAccountName, 0, sizeof(SteamAccountName));

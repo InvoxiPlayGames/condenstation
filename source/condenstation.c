@@ -234,6 +234,7 @@ void SetCMNetadr(const char *in_ip_addr)
 
 SteamPS3Params_t *steamPS3Params;
 GetPS3Params_t GetPS3Params;
+BInitPS3Params_t BInitPS3Params;
 
 void ApplyOverlayHooks(ISteamPS3OverlayRender_t *renderer);
 void ApplyUserStatsHooks(ISteamUserStats_t *sus);
@@ -388,6 +389,17 @@ void apply_steamclient_patches()
         cdst_log("m_rgchInstallationPath = %s\n", steamPS3Params->m_rgchInstallationPath);
         cdst_log("m_rgchGameData = %s\n", steamPS3Params->m_rgchGameData);
         cdst_log("m_rgchSystemCache = %s\n", steamPS3Params->m_rgchSystemCache);
+
+        // TODO: i think we need to do more than this to actually get it to take up the appid
+        int appid_override = load_appid_file(steamPS3Params->m_rgchInstallationPath);
+        if (appid_override > 0) {
+            BInitPS3Params = SCUtils_LookupNID(NID_BInitPS3Params);
+            if (BInitPS3Params != NULL) {
+                cdst_log("overriding appID to %i\n", appid_override);
+                steamPS3Params->m_nAppId = appid_override;
+                BInitPS3Params(steamPS3Params);
+            }
+        }
     }
 
     SteamAPI_ClassAccessor_t SteamPS3OverlayRender = SCUtils_LookupSteamAPINID(NID_SteamPS3OverlayRender);
