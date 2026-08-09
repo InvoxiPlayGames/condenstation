@@ -3,16 +3,12 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "IClientUser_c.h"
+#include "steam_api.h"
 
-typedef uint32_t uint32;
-typedef uint16_t uint16;
-typedef uint32_t HSteamUser;
 typedef uint32_t EVoiceResult;
 typedef uint32_t HAuthTicket;
 typedef uint32_t EBeginAuthSessionResult;
 typedef uint32_t EUserHasLicenseForAppResult;
-typedef uint32_t SteamAPICall_t;
-typedef void *CSteamID;
 
 // based off SteamUser015
 

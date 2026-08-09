@@ -21,6 +21,8 @@
 #include "steam_api.h"
 #include "ISteamPS3OverlayRender_c.h"
 #include "ISteamMatchmaking_c.h"
+#include "ISteamUserStats_c.h"
+#include "ISteamRemoteStorage_c.h"
 #include "ps3_utilities.h"
 #include "CMsgClientLogonAutogen.h"
 #include "CMsgClientLogonResponseAutogen.h"
@@ -234,6 +236,8 @@ SteamPS3Params_t *steamPS3Params;
 GetPS3Params_t GetPS3Params;
 
 void ApplyOverlayHooks(ISteamPS3OverlayRender_t *renderer);
+void ApplyUserStatsHooks(ISteamUserStats_t *sus);
+void ApplyRemoteStorageHooks(ISteamRemoteStorage_t *remote);
 
 typedef void (*CSteamEngine_InitCDNCache_t)(void *csteamengine);
 toc_stub CSteamEngine_InitCDNCache_stub;
@@ -401,6 +405,18 @@ void apply_steamclient_patches()
         if (*(uint32_t *)(&(mm->vt->RequestLobbyList)) != (uint32_t)ISteamMatchmaking_RequestLobbyList_Hook) {
             memwrite_failed = true;
         }
+    }
+
+    // hook user stats and remotestorage on portal2
+    SteamAPI_ClassAccessor_t SteamUserStats = SCUtils_LookupSteamAPINID(NID_SteamUserStats);
+    if (SteamUserStats != NULL && !use_v2_cmsgclientlogon) {
+        ISteamUserStats_t *sus = SteamUserStats();
+        ApplyUserStatsHooks(sus);
+    }
+    SteamAPI_ClassAccessor_t SteamRemoteStorage = SCUtils_LookupSteamAPINID(NID_SteamRemoteStorage);
+    if (SteamRemoteStorage != NULL && !use_v2_cmsgclientlogon) {
+        ISteamRemoteStorage_t *remote = SteamRemoteStorage();
+        ApplyRemoteStorageHooks(remote);
     }
 
     // load our config file

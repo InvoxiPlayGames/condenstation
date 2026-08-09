@@ -3,8 +3,8 @@
 
 # the source code files to compile from
 SRC_DIR := source
-SOURCES := $(wildcard $(SRC_DIR)/*.c)
-SOURCES_CPP := $(wildcard $(SRC_DIR)/*.cpp)
+SOURCES := $(sort $(wildcard $(SRC_DIR)/*.c))
+SOURCES_CPP := $(sort $(wildcard $(SRC_DIR)/*.cpp))
 INC_DIR := include
 
 # output directory for final SPRX file

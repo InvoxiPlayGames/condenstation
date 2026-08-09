@@ -1,4 +1,4 @@
-condenstation beta 1 for PS3
+condenstation beta 2 for PS3
 -= https://github.com/InvoxiPlayGames/condenstation =-
 
 A PRX plugin to re-enable connecting to Steam for the PS3 for Portal 2.
@@ -14,6 +14,10 @@ Requirements:
 
 Installation:
 -------------
+
+As a precaution, if you want to avoid potentially losing progress on Portal 2
+for PC, you should first delete your Portal 2 save game on your PS3 via the XMB.
+
 1. Extract the "portal2_dlc3" folder.
 2. Using FTP, copy the portal2_dlc3 folder into the Portal 2 USRDIR folder on
    your PS3.
@@ -25,7 +29,7 @@ Installation:
    You should see a welcome message from condenstation after the Valve and
    Sixense logos.
 4. Sign into PlayStation Network in the XMB. You may need to disable syscalls
-   first (R2 + Triangle on Evilnat CFW.)
+   first (R2 + Triangle on Evilnat CFW with webMAN MOD.)
 5. Use the Steam overlay to log in with Steam - you will be asked to scan a QR
    code in the Steam Guard Mobile Authenticator app.
 6. You should be signed into Steam!

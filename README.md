@@ -15,6 +15,9 @@ This third-party project is not affiliated with nor endorsed by Valve Software.
 * **I am not responsible for any damage to your Steam account, PSN account or PS3 for using this.**
     You aren't breaking any Steam rules, nor are you cheating, so you should not get (VAC) banned,
     but I am not responsible if you do somehow.
+    * **You may risk losing achievements or stats on Portal 2 on your Steam account!**
+      If you played Portal 2 on PC first, delete your PS3 save file **before** playing with
+      condenstation enabled.
     * There is risk in connecting a PS3 with CFW/HEN to PSN. Use an alternative account if you are
     concerned.
     * Your Steam and PSN account are **not** linked, your Steam account information is stored on your PS3.

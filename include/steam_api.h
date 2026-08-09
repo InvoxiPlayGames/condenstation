@@ -7,6 +7,14 @@
 typedef int32_t HSteamPipe;
 typedef int32_t HSteamUser;
 typedef uint64_t SteamAPICall_t;
+typedef uint64_t uint64;
+typedef uint32_t uint32;
+typedef int32_t int32;
+typedef int64_t int64;
+typedef uint16_t uint16;
+typedef uint32_t AppId_t;
+typedef uint32_t UGCHandle_t;
+typedef void *CSteamID; // not a void* TODO
 
 typedef bool (*SteamAPI_Init_t)(SteamPS3Params_t *pParams);
 typedef HSteamUser (*SteamAPI_GetHSteamUser_t)();
