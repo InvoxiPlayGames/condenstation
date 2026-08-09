@@ -57,10 +57,8 @@ typedef struct _SteamPS3Params_t {
     bool m_bPersonaStateOffline; // m_unVersion == 4
 } SteamPS3Params_t;
 
-#define NID_steamclient_GetSteamPS3Params NID_steamclient_0xE2C6386D
-typedef SteamPS3Params_t *(*steamclient_GetSteamPS3Params_t)();
+typedef SteamPS3Params_t *(*GetPS3Params_t)();
 
-#define NID_steamclient_SetSteamPS3Params NID_steamclient_0xAC6BB824
-typedef bool (*steamclient_SetSteamPS3Params_t)(SteamPS3Params_t *params);
+typedef bool (*BInitPS3Params_t)(SteamPS3Params_t *params);
 
 #endif // STEAMCLIENT_INTERNAL_H_

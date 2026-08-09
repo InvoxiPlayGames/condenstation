@@ -231,7 +231,7 @@ void SetCMNetadr(const char *in_ip_addr)
 }
 
 SteamPS3Params_t *steamPS3Params;
-steamclient_GetSteamPS3Params_t steamclient_GetSteamPS3Params;
+GetPS3Params_t GetPS3Params;
 
 void ApplyOverlayHooks(ISteamPS3OverlayRender_t *renderer);
 
@@ -368,10 +368,10 @@ void apply_steamclient_patches()
     SCUtils_Init();
 
     // detect the current game by looking at the appid passed into steamclient
-    steamclient_GetSteamPS3Params = SCUtils_LookupNID(NID_steamclient_GetSteamPS3Params);
-    if (steamclient_GetSteamPS3Params != NULL)
+    GetPS3Params = SCUtils_LookupNID(NID_GetPS3Params);
+    if (GetPS3Params != NULL)
     {
-        steamPS3Params = steamclient_GetSteamPS3Params();
+        steamPS3Params = GetPS3Params();
         use_v2_cmsgclientlogon = (steamPS3Params->m_unVersion == STEAM_PS3_CSGO_PARAMS_VER);
         if (steamPS3Params->m_unVersion == STEAM_PS3_PORTAL2_PARAMS_VER)
             cdst_log("portal 2!\n");
