@@ -88,11 +88,13 @@ void get_cm_thread() {
     r = SteamGetCMList(cm_req_body, &req_body_size);
     if (r < 0) {
         set_fatal_error("Couldn't get Steam connection manager:\nCouldn't connect to the Steam API.");
+        sys_ppu_thread_exit(0);
         return;
     }
     if (req_body_size <= 50) {
         cdst_log("invalid response length %i\n", req_body_size);
         set_fatal_error("Couldn't get Steam connection manager:\nThe response was too short.");
+        sys_ppu_thread_exit(0);
         return;
     }
     // JSON parsing is expensive and the response format is mostly sane...
@@ -100,6 +102,7 @@ void get_cm_thread() {
     if (strncmp(cm_req_body, "{\"response\":{\"serverlist\":[\"", 28) != 0) {
         cdst_log("invalid response");
         set_fatal_error("Couldn't get Steam connection manager:\nThe response was invalid.");
+        sys_ppu_thread_exit(0);
         return;
     }
     char splitIP[24];
@@ -117,4 +120,5 @@ void get_cm_thread() {
     }
     cdst_log("Got CM IP address: %s\n", splitIP);
     SetCMNetadr(splitIP);
+    sys_ppu_thread_exit(0);
 }

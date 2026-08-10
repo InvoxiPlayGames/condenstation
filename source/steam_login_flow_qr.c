@@ -202,6 +202,7 @@ void qr_code_auth_thread() {
         cdst_log("auth session failed\n");
     }
     QRoverlay_stop_displaying_qr();
+    sys_ppu_thread_exit(0);
 }
 
 void cancel_qr_auth_session() {

@@ -365,6 +365,7 @@ void shillthread() {
         "condenstation beta 2 - CS:GO IS NOT SUPPORTED!\n\nhttps://github.com/InvoxiPlayGames/condenstation", nullcb, NULL, NULL);
         cellMsgDialogClose(5690);
     }
+    sys_ppu_thread_exit(0);
 }
 
 void apply_steamclient_patches()
